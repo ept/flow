@@ -1,0 +1,207 @@
+{
+    "name": "OrderedList",
+    "namespace": "com.flowprotocol.crdt",
+    "type": "record",
+    "doc": "Encapsulates all the persistent state needed by an ordered list replicated data type. Based on the RGA (Replicated Growable Array) construction, as described in: Hyun-Gul Roh, Myeongjae Jeon, Jin-Soo Kim, and Joonwon Lee: “Replicated abstract data types: Building blocks for collaborative applications,” Journal of Parallel and Distributed Computing, vol. 71, no. 3, pp. 354–368, Mar. 2011.",
+    "fields": [
+        {
+            "name": "vectorClock",
+            "doc": "For each peer that has modified this list, contains the number of operations from that peer that we have applied to this structure.",
+            "default": [],
+            "type": {
+                "type": "array",
+                "items": {
+                    "name": "VectorClockEntry",
+                    "type": "record",
+                    "doc": "One entry in a vector clock: the count of modifications made by a particular peer.",
+                    "fields": [
+                        {
+                            "name": "peerID",
+                            "doc": "Unique identifier of the peer that made the modifications.",
+                            "type": {
+                                "type": "fixed",
+                                "name": "PeerID",
+                                "doc": "64-bit probabilistically unique random identifier, used to identify a particular peer. A peer might be server, a client, an end-user device, a web browser, a thread, etc. — basically any two actors that can concurrently modify a replicated data structure should be different peers.",
+                                "size": 8
+                            }
+                        },
+                        {
+                            "name": "count",
+                            "doc": "Number of modifications to this data structure made by this peer.",
+                            "default": 0,
+                            "type": "long"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "elements",
+            "doc": "The elements of the list, in correct application order, but including tombstones.",
+            "default": [],
+            "type": {
+                "type": "array",
+                "items": {
+                    "name": "ListElement",
+                    "type": "record",
+                    "doc": "One element of an ordered list.",
+                    "fields": [
+                        {
+                            "name": "id",
+                            "doc": "Immutable identifier for this list element that was assigned when the element was inserted. It is unique within this list, but not globally unique. In fact, it is simply the version number of the operation that inserted it. Subsequent operations that need to refer to a list element use this identifier.",
+                            "type": {
+                                "name": "VectorClockVersion",
+                                "type": "record",
+                                "doc": "A per-datastructure-unique, totally ordered version identifier that is derived from a vector clock. Based on the S4Vector of Roh et al., but simplified.",
+                                "fields": [
+                                    {
+                                        "name": "vectorClockSum",
+                                        "doc": "The sum of all the entries' counts in the vector clock from which this record is derived.",
+                                        "type": "long"
+                                    },
+                                    {
+                                        "name": "lastWriterID",
+                                        "doc": "Unique identifier of the peer that most recently modified the data structure.",
+                                        "type": "PeerID"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "name": "valueVersion",
+                            "doc": "The version identifier of the last operation that assigned this list element's value, or deleted it. Initially the same value as `id`.",
+                            "type": "VectorClockVersion"
+                        },
+                        {
+                            "name": "positionVersion",
+                            "doc": "The version identifier of the last operation that modified this element's position in the list. Initially the same value as `id`.",
+                            "type": "VectorClockVersion"
+                        },
+                        {
+                            "name": "timestamp",
+                            "doc": "The time at which this element was last modified (milliseconds since the epoch), according to the clock of the peer that performed the modification. For information only; not used for conflict resolution.",
+                            "type": "long"
+                        },
+                        {
+                            "name": "deleted",
+                            "doc": "Initially false, and set to true when this list element is removed (becomes a tombstone). Note that in an ordered list, once an element has been deleted, it must never be undeleted again. You must insert a new element if the user changed their mind about deleting it. In principle, tombstones can be purged from the structure once we are sure that the deletion has propagated to all peers (and thus no peers are going to try referring to it ever again); however, in practice, it's difficult to be sure about propagation of operations, and so we currently don't support purging. This means that deleted elements must remain in the list forever (though their value can be set to null).",
+                            "default": false,
+                            "type": "boolean"
+                        },
+                        {
+                            "name": "value",
+                            "doc": "This should be a union of null and the declared list item type (transformed into CRDT).",
+                            "type": ["null"]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "queue",
+            "doc": "List of operations that we have received from peers, but not yet applied, because they are not yet causally ready (based on their vector clocks).",
+            "default": [],
+            "type": {
+                "type": "array",
+                "items": {
+                    "name": "ListOperation",
+                    "type": "record",
+                    "doc": "A list of modifications to an OrderedList data structure, made by a peer. They are applied atomically.",
+                    "fields": [
+                        {
+                            "name": "writer",
+                            "doc": "The unique identifier of the peer that issued this operation.",
+                            "type": "PeerID"
+                        },
+                        {
+                            "name": "vectorClock",
+                            "doc": "The vector clock of the data structure at the peer that modified it, immediately after the modifications have been locally applied. If multiple modifications have been grouped together into one operation, the vector clock must be incremented for each modification.",
+                            "default": [],
+                            "type": {
+                                "type": "array",
+                                "items": "VectorClockEntry"
+                            }
+                        },
+                        {
+                            "name": "timestamp",
+                            "doc": "The time at which this operation was issued (milliseconds since the epoch), according to the clock of the peer that performed the modifications. For information only; not used for conflict resolution.",
+                            "type": "long"
+                        },
+                        {
+                            "name": "modifications",
+                            "doc": "List of modifications made to the data structure. They are applied sequentially, in the order they appear in this array.",
+                            "type": {
+                                "type": "array",
+                                "items": [
+                                    {
+                                        "name": "ListInsert",
+                                        "type": "record",
+                                        "doc": "Records the fact that a peer modified an ordered list by inserting a new element somewhere.",
+                                        "fields": [
+                                            {
+                                                "name": "precedingElement",
+                                                "doc": "The `id` of the list element that came immediately before the newly inserted element, on the peer where it was inserted, at the time when it was inserted. `null` if the element was inserted at the beginning of the list.",
+                                                "type": ["null", "VectorClockVersion"]
+                                            },
+                                            {
+                                                "name": "value",
+                                                "doc": "The value of the newly inserted element (transformed into CRDT).",
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "name": "ListUpdate",
+                                        "type": "record",
+                                        "doc": "Records the fact that a peer modified an ordered list by assigning a new value to a particular index in the list.",
+                                        "fields": [
+                                            {
+                                                "name": "elementID",
+                                                "doc": "The `id` of the list element whose value was replaced.",
+                                                "type": "VectorClockVersion"
+                                            },
+                                            {
+                                                "name": "value",
+                                                "doc": "The list element's new value (transformed into CRDT).",
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "name": "ListDelete",
+                                        "type": "record",
+                                        "doc": "Records the fact that a peer modified an ordered list by deleting an element from it.",
+                                        "fields": [
+                                            {
+                                                "name": "elementID",
+                                                "doc": "The `id` of the list element that was deleted.",
+                                                "type": "VectorClockVersion"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "name": "ListReorder",
+                                        "type": "record",
+                                        "doc": "Records the fact that a peer modified an ordered list by reordering some of its elements.",
+                                        "fields": [
+                                            {
+                                                "name": "elementID",
+                                                "doc": "The `id` of the list element whose position was changed.",
+                                                "type": "VectorClockVersion"
+                                            },
+                                            {
+                                                "name": "precedingElement",
+                                                "doc": "The `id` of the list element that came immediately before the moved element's new position, on the peer where the list was reordered, at the time when it was reordered. `null` if the element was moved to the beginning of the list.",
+                                                "type": ["null", "VectorClockVersion"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}
