@@ -1,0 +1,68 @@
+{
+    "name": "Replica",
+    "namespace": "com.flowprotocol.crdt",
+    "type": "record",
+    "doc": "Encapsulates all the persistent state needed by a replicated data structure. If a replica needs to shut down and restart, this structure contains everything it needs to return to the same runtime state as it had before. It's also possible to bootstrap a new replica by sending it this structure. Enough state is maintained so that after starting up and loading this state, the replica can efficiently re-synchronize with its peers.",
+    "fields": [
+        {
+            "name": "peerID",
+            "doc": "Unique identifier for this peer (replica).",
+            "type": {
+                "type": "fixed",
+                "name": "PeerID",
+                "doc": "64-bit probabilistically unique random identifier, used to identify a particular peer. A peer might be server, a client, an end-user device, a web browser, a thread, etc. — basically any two actors that can concurrently modify a replicated data structure should be different peers.",
+                "size": 8
+            }
+        },
+        {
+            "name": "vectorClock",
+            "doc": "For each peer that has modified this list, contains the number of operations from that peer that we have applied to this structure.",
+            "default": [],
+            "type": {
+                "type": "array",
+                "items": {
+                    "name": "VectorClockEntry",
+                    "type": "record",
+                    "doc": "One entry in a vector clock: the count of modifications made by a particular peer.",
+                    "fields": [
+                        {
+                            "name": "peerID",
+                            "doc": "Unique identifier of the peer that made the modifications.",
+                            "type": "PeerID"
+                        },
+                        {
+                            "name": "count",
+                            "doc": "Number of modifications to this data structure made by this peer.",
+                            "default": 0,
+                            "type": "long"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "lastOperation",
+            "doc": "The unique identifier of the last operation generated on this replica.",
+            "type": [
+                "null",
+                {
+                    "name": "VectorClockVersion",
+                    "type": "record",
+                    "doc": "A per-datastructure-unique, totally ordered version identifier that is derived from a vector clock. Based on the S4Vector of Roh et al., but simplified.",
+                    "fields": [
+                        {
+                            "name": "vectorClockSum",
+                            "doc": "The sum of all the entries' counts in the vector clock from which this record is derived.",
+                            "type": "long"
+                        },
+                        {
+                            "name": "lastWriterID",
+                            "doc": "Unique identifier of the peer that most recently modified the data structure.",
+                            "type": "PeerID"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
