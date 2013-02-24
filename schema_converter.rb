@@ -70,7 +70,7 @@ module Flow
       end
 
       json_obj = json_obj.merge('name' => name, 'namespace' => namespace)
-      if %w(record error).include? json_obj['type']
+      if %w(record error).include?(json_obj['type']) && json_obj['semantics'] != 'atomic'
         json_obj = record_schema(json_obj)
       else
         @name_mapping[full_name] = full_name

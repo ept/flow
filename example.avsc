@@ -42,6 +42,7 @@
                         "type": {
                             "name": "Vector2D",
                             "type": "record",
+                            "semantics": "atomic",
                             "doc": "Generic 2D vector type.",
                             "fields": [
                                 {
@@ -111,6 +112,7 @@
                                                         "name": "Color",
                                                         "aliases": ["Colour"],
                                                         "type": "record",
+                                                        "semantics": "atomic",
                                                         "doc": "A color in the RGB system, with alpha channel, non-premultiplied.",
                                                         "fields": [
                                                             {
