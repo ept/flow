@@ -63,6 +63,83 @@
                     ]
                 }
             ]
+        },
+        {
+            "name": "booleanField",
+            "type": {
+                "type": "record",
+                "name": "VersionedBoolean",
+                "fields": [
+                    {"name": "value",   "type": "boolean"},
+                    {"name": "version", "type": "VectorClockVersion"}
+                ]
+            }
+        },
+        {
+            "name": "intField",
+            "type": {
+                "type": "record",
+                "name": "VersionedInt",
+                "fields": [
+                    {"name": "value",   "type": "int"},
+                    {"name": "version", "type": "VectorClockVersion"}
+                ]
+            }
+        },
+        {
+            "name": "longField",
+            "type": {
+                "type": "record",
+                "name": "VersionedLong",
+                "fields": [
+                    {"name": "value",   "type": "long"},
+                    {"name": "version", "type": "VectorClockVersion"}
+                ]
+            }
+        },
+        {
+            "name": "floatField",
+            "type": {
+                "type": "record",
+                "name": "VersionedFloat",
+                "fields": [
+                    {"name": "value",   "type": "float"},
+                    {"name": "version", "type": "VectorClockVersion"}
+                ]
+            }
+        },
+        {
+            "name": "doubleField",
+            "type": {
+                "type": "record",
+                "name": "VersionedDouble",
+                "fields": [
+                    {"name": "value",   "type": "double"},
+                    {"name": "version", "type": "VectorClockVersion"}
+                ]
+            }
+        },
+        {
+            "name": "bytesField",
+            "type": {
+                "type": "record",
+                "name": "VersionedBytes",
+                "fields": [
+                    {"name": "value",   "type": "bytes"},
+                    {"name": "version", "type": "VectorClockVersion"}
+                ]
+            }
+        },
+        {
+            "name": "stringField",
+            "type": {
+                "type": "record",
+                "name": "VersionedString",
+                "fields": [
+                    {"name": "value",   "type": "string"},
+                    {"name": "version", "type": "VectorClockVersion"}
+                ]
+            }
         }
     ]
 }

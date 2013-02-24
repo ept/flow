@@ -121,15 +121,22 @@ module Flow
       # default values down to the innermost fields.
       value_field['default'] = field['default'] if field.include?('default')
 
-      {
-        'name' => field['name'],
-        'type' => {
-          'type' => 'record',
+      if PRIMITIVE_TYPES.include? value_field['type']
+        {
           'name' => field['name'],
-          'namespace' => [namespace, '_flow_fields', record_name].compact.join('.'),
-          'fields'    => [version_field, value_field]
+          'type' => 'com.flowprotocol.crdt.Versioned' + value_field['type'].capitalize
         }
-      }.tap do |wrapper_field|
+      else
+        {
+          'name' => field['name'],
+          'type' => {
+            'type' => 'record',
+            'name' => field['name'],
+            'namespace' => [namespace, '_flow_fields', record_name].compact.join('.'),
+            'fields'    => [version_field, value_field]
+          }
+        }
+      end.tap do |wrapper_field|
         wrapper_field['doc']     = field['doc']     if field.include?('doc')
         wrapper_field['aliases'] = field['aliases'] if field.include?('aliases')
       end
