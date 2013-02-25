@@ -11,6 +11,7 @@ module Flow
       app_schema = Yajl.load(app_schema) if app_schema.is_a? String
       @app_schema = app_schema
       @name_mapping = {}
+      @versioned_types = {}
       @flow_schema = convert(app_schema)
     end
 
@@ -80,7 +81,7 @@ module Flow
 
     def record_schema(record)
       original_name = [record['namespace'], record['name']].compact.join('.')
-      generated_namespace = [record['namespace'], '_flow'].compact.join('.')
+      generated_namespace = [record['namespace'], '_flow_record'].compact.join('.')
       @name_mapping[original_name] = [generated_namespace, record['name']].join('.')
 
       fields = (record['fields'] || []).map do |field|
@@ -113,33 +114,71 @@ module Flow
         :namespace => namespace,
         :path => [field['name']]
       }
-      value_field = {
-        'name' => 'value',
-        'type' => convert(field['type'], namespace, field_info)
-      }
-      # FIXME if the default value is an object (with values for each field), we need to push those
-      # default values down to the innermost fields.
-      value_field['default'] = field['default'] if field.include?('default')
+      value_type = convert(field['type'], namespace, field_info)
 
-      if PRIMITIVE_TYPES.include? value_field['type']
-        {
-          'name' => field['name'],
-          'type' => 'com.flowprotocol.crdt.Versioned' + value_field['type'].capitalize
-        }
-      else
-        {
-          'name' => field['name'],
-          'type' => {
-            'type' => 'record',
-            'name' => field['name'],
-            'namespace' => [namespace, '_flow_fields', record_name].compact.join('.'),
-            'fields'    => [version_field, value_field]
-          }
-        }
-      end.tap do |wrapper_field|
-        wrapper_field['doc']     = field['doc']     if field.include?('doc')
-        wrapper_field['aliases'] = field['aliases'] if field.include?('aliases')
+      if value_type.is_a?(Array) && value_type.uniq.size == 2 &&
+          value_type.include?('null') && !field['default']
+        optional_type = (value_type - ['null']).first
       end
+
+      wrapper_field = {'name' => field['name']}
+      wrapper_field['doc']     = field['doc']     if field.include?('doc')
+      wrapper_field['aliases'] = field['aliases'] if field.include?('aliases')
+
+      if PRIMITIVE_TYPES.include?(value_type) && !field.include?('default')
+        wrapper_field['type'] = 'com.flowprotocol.crdt.Versioned' + value_type.capitalize
+      elsif PRIMITIVE_TYPES.include?(optional_type)
+        wrapper_field['type'] = 'com.flowprotocol.crdt.Optional' + optional_type.capitalize
+        wrapper_field['default'] = {'value' => nil, 'version' => nil}
+
+      elsif @versioned_types.include?(value_type) && !field.include?('default')
+        wrapper_field['type'] = @versioned_types[value_type]
+      elsif @versioned_types.include?(optional_type)
+        wrapper_field['type'] = ['null', @versioned_types[value_type]]
+        wrapper_field['default'] = nil
+
+      elsif value_type.is_a?(Hash) && NAMED_TYPES.include?(value_type['type'])
+        wrapper_field['type'] = versioned_named_type(value_type)
+      elsif optional_type.is_a?(Hash) && NAMED_TYPES.include?(optional_type['type'])
+        wrapper_field['type'] = versioned_named_type(optional_type, :optional => true)
+        wrapper_field['default'] = nil
+
+      elsif (field['default'].is_a?(Hash) || field['default'].is_a?(Array)) && !field['default'].empty?
+        raise Avro::SchemaParseError, "Unsupported default: #{field['default'].inspect}"
+
+      else
+        value_field = {'name' => 'value', 'type' => value_type}
+        value_field['default'] = field['default'] if field.include?('default')
+        versioned = {
+          'type' => 'record',
+          'name' => field['name'],
+          'namespace' => [namespace, '_flow_field', record_name].compact.join('.'),
+          'fields'    => [value_field, version_field]
+        }
+        versioned['doc'] = field['doc'] if field.include?('doc')
+        wrapper_field['type'] = ['null', versioned]
+        wrapper_field['default'] = nil
+      end
+
+      wrapper_field
+    end
+
+    def versioned_named_type(type, options={})
+      versioned_namespace = (
+        type['namespace'].split('.').reject{|seg| seg == '_flow_record' } + ['_flow_versioned']
+      ).join('.')
+      @versioned_types["#{type['namespace']}.#{type['name']}"] = "#{versioned_namespace}.#{type['name']}"
+
+      versioned = {
+        'type' => 'record',
+        'name' => type['name'],
+        'namespace' => versioned_namespace,
+        'fields' => [
+          {'name' => 'value',   'type' => ['null', type], 'default' => nil},
+          version_field
+        ]
+      }
+      options[:optional] ? ['null', versioned] : versioned
     end
 
     def list_schema(list, namespace, field_info)

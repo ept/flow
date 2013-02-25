@@ -7,7 +7,6 @@
         {
             "name": "title",
             "doc": "Title of the drawing.",
-            "default": "",
             "type": "string"
         },
         {
@@ -67,8 +66,7 @@
                     {
                         "name": "scale",
                         "doc": "Factor by which this object is scaled in horizontal (x) and vertical (y) direction, prior to any rotation.",
-                        "type": "Vector2D",
-                        "default": {"x": 1.0, "y": 1.0}
+                        "type": "Vector2D"
                     },
                     {
                         "name": "object",
@@ -107,7 +105,6 @@
                                                     "name": "color",
                                                     "aliases": ["colour"],
                                                     "doc": "Color in which the line should be drawn.",
-                                                    "default": {"red": 0, "green": 0, "blue": 0, "alpha": 255},
                                                     "type": {
                                                         "name": "Color",
                                                         "aliases": ["Colour"],
@@ -222,7 +219,6 @@
                                                         "name": "color",
                                                         "aliases": ["colour"],
                                                         "doc": "Color with which the object area should be filled.",
-                                                        "default": {"red": 255, "green": 255, "blue": 255, "alpha": 255},
                                                         "type": "Color"
                                                     }
                                                 ]
@@ -311,7 +307,6 @@
                                         "name": "color",
                                         "aliases": ["colour"],
                                         "doc": "Color with which the text should be rendered.",
-                                        "default": {"red": 0, "green": 0, "blue": 0, "alpha": 255},
                                         "type": "Color"
                                     },
                                     {
@@ -371,7 +366,6 @@
                                                             "name": "color",
                                                             "aliases": ["colour"],
                                                             "doc": "Color with which the text should be rendered.",
-                                                            "default": {"red": 0, "green": 0, "blue": 0, "alpha": 255},
                                                             "type": "Color"
                                                         }
                                                     ]

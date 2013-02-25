@@ -140,6 +140,90 @@
                     {"name": "version", "type": "VectorClockVersion"}
                 ]
             }
+        },
+        {
+            "name": "optionalBooleanField",
+            "default": {"value": null, "version": null},
+            "type": {
+                "type": "record",
+                "name": "OptionalBoolean",
+                "fields": [
+                    {"name": "value",   "type": ["null", "boolean"],            "default": null},
+                    {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+                ]
+            }
+        },
+        {
+            "name": "optionalIntField",
+            "default": {"value": null, "version": null},
+            "type": {
+                "type": "record",
+                "name": "OptionalInt",
+                "fields": [
+                    {"name": "value",   "type": ["null", "int"],                "default": null},
+                    {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+                ]
+            }
+        },
+        {
+            "name": "optionalLongField",
+            "default": {"value": null, "version": null},
+            "type": {
+                "type": "record",
+                "name": "OptionalLong",
+                "fields": [
+                    {"name": "value",   "type": ["null", "long"],               "default": null},
+                    {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+                ]
+            }
+        },
+        {
+            "name": "optionalFloatField",
+            "default": {"value": null, "version": null},
+            "type": {
+                "type": "record",
+                "name": "OptionalFloat",
+                "fields": [
+                    {"name": "value",   "type": ["null", "float"],              "default": null},
+                    {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+                ]
+            }
+        },
+        {
+            "name": "optionalDoubleField",
+            "default": {"value": null, "version": null},
+            "type": {
+                "type": "record",
+                "name": "OptionalDouble",
+                "fields": [
+                    {"name": "value",   "type": ["null", "double"],             "default": null},
+                    {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+                ]
+            }
+        },
+        {
+            "name": "optionalBytesField",
+            "default": {"value": null, "version": null},
+            "type": {
+                "type": "record",
+                "name": "OptionalBytes",
+                "fields": [
+                    {"name": "value",   "type": ["null", "bytes"],              "default": null},
+                    {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+                ]
+            }
+        },
+        {
+            "name": "optionalStringField",
+            "default": {"value": null, "version": null},
+            "type": {
+                "type": "record",
+                "name": "OptionalString",
+                "fields": [
+                    {"name": "value",   "type": ["null", "string"],             "default": null},
+                    {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+                ]
+            }
         }
     ]
 }
