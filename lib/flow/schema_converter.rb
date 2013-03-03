@@ -1,5 +1,3 @@
-require 'avro'
-
 module Flow
   class SchemaConverter
     PRIMITIVE_TYPES = Set.new(%w[null boolean string bytes int long float double])
