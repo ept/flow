@@ -132,7 +132,7 @@ module Flow
       elsif @versioned_types.include?(value_type) && !field.include?('default')
         wrapper_field['type'] = @versioned_types[value_type]
       elsif @versioned_types.include?(optional_type)
-        wrapper_field['type'] = ['null', @versioned_types[value_type]]
+        wrapper_field['type'] = ['null', @versioned_types[optional_type]]
         wrapper_field['default'] = nil
 
       elsif value_type.is_a?(Hash) && NAMED_TYPES.include?(value_type['type'])
@@ -162,10 +162,11 @@ module Flow
     end
 
     def versioned_named_type(type, options={})
+      original_namespace = [type['namespace'], type['name']].compact.join('.')
       versioned_namespace = (
-        type['namespace'].split('.').reject{|seg| seg == '_flow_record' } + ['_flow_versioned']
+        (type['namespace'] || '').split('.').reject{|seg| seg == '_flow_record' } + ['_flow_versioned']
       ).join('.')
-      @versioned_types["#{type['namespace']}.#{type['name']}"] = "#{versioned_namespace}.#{type['name']}"
+      @versioned_types[original_namespace] = [versioned_namespace, type['name']].join('.')
 
       versioned = {
         'type' => 'record',
