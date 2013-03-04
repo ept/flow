@@ -135,6 +135,11 @@ module Flow
         wrapper_field['type'] = ['null', @versioned_types[optional_type]]
         wrapper_field['default'] = nil
 
+      elsif value_type.is_a?(Hash) && value_type['type'] == 'record' && value_type['namespace'] &&
+            value_type['namespace'].split('.').include?('_flow_list')
+        wrapper_field['type'] = ['null', value_type]
+        wrapper_field['default'] = nil
+
       elsif value_type.is_a?(Hash) && NAMED_TYPES.include?(value_type['type'])
         wrapper_field['type'] = versioned_named_type(value_type)
       elsif optional_type.is_a?(Hash) && NAMED_TYPES.include?(optional_type['type'])
@@ -186,16 +191,14 @@ module Flow
       ).compact.join('.')
       value_field_info = field_info.merge(:path => field_info[:path] + ['list'])
       value_type = convert(list['items'], namespace, value_field_info)
+      value_type_ref = type_definitions_to_references(value_type)
 
       # Make sure the value type is a union, with null as one of the branches
       if value_type.is_a? Array
-        value_type.unshift 'null' unless value_type.include? 'null'
+        value_type = ['null'] + value_type unless value_type.include? 'null'
       else
         value_type = ['null', value_type]
       end
-      value_field = {'name' => 'value', 'type' => value_type}
-
-      value_type_ref = type_definitions_to_references(value_type)
 
       {
         'type' => 'record',
@@ -216,7 +219,7 @@ module Flow
                 version_field('positionVersion'),
                 {'name' => 'timestamp', 'type' => 'long'},
                 {'name' => 'deleted', 'type' => 'boolean', 'default' => false},
-                value_field
+                {'name' => 'value', 'type' => value_type}
               ]
             }}
           },

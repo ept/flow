@@ -223,6 +223,64 @@ describe Flow::SchemaConverter do
         end
       end
     end
+
+    it 'should generate an ordered list construction for a field with array type' do
+      Flow::SchemaConverter.new({
+        'type' => 'record', 'name' => 'MyRecord', 'fields' => [
+          {'name' => 'characters', 'type' => {'type' => 'array', 'items' => 'string'}}
+        ]
+      }).flow_schema['fields'][1].tap do |field|
+        field.should include('name' => 'characters', 'default' => nil)
+        field['type'].first.should == 'null'
+        field['type'].last.tap do |list_type|
+          list_type.should include('name' => 'OrderedList', 'namespace' => '_flow_list.MyRecord.characters')
+          list_type['fields'].map{|field| field['name'] }.should == %w(_flowVectorClock elements queue)
+          list_type['fields'][1]['type']['items'].tap do |element|
+            element.should include('type' => 'record', 'name' => 'ListElement', 'namespace' => '_flow_list.MyRecord.characters')
+            element['fields'].map{|field| field['name'] }.should == %w(id valueVersion positionVersion timestamp deleted value)
+            element['fields'].last['type'].should == ['null', 'string']
+          end
+          list_type['fields'][2]['type']['items'].tap do |operation|
+            operation.should include('type' => 'record', 'name' => 'ListOperation', 'namespace' => '_flow_list.MyRecord.characters')
+            operation['fields'].map{|field| field['name'] }.should == %w(writer vectorClock timestamp modifications)
+            operation['fields'].last['type']['items'].tap do |modification|
+              modification.map{|mod| mod['name'] }.should == %w(ListInsert ListUpdate ListDelete ListReorder)
+              modification.each{|mod| mod['namespace'].should == '_flow_list.MyRecord.characters' }
+              modification[0]['fields'].detect{|f| f['name'] == 'value' }['type'].should == 'string'
+              modification[1]['fields'].detect{|f| f['name'] == 'value' }['type'].should == 'string'
+            end
+          end
+        end
+      end
+    end
+
+    it 'should support nested ordered lists' do
+      Flow::SchemaConverter.new({
+        'type' => 'record', 'name' => 'MyRecord', 'fields' => [
+          {'name' => 'matrix', 'type' => {'type' => 'array', 'items' => {
+            'type' => 'array', 'items' => {
+              'type' => 'record', 'name' => 'Item', 'fields' => [
+                {'name' => 'value', 'type' => 'long'}
+              ]
+            }
+          }}}
+        ]
+      }).flow_schema['fields'][1]['type'].last.tap do |outer_list|
+        outer_list.should include('name' => 'OrderedList', 'namespace' => '_flow_list.MyRecord.matrix')
+        outer_list['fields'].detect{|f| f['name'] == 'elements' }['type']['items'].tap do |outer_element|
+          outer_element.should include('name' => 'ListElement', 'namespace' => '_flow_list.MyRecord.matrix')
+          outer_element['fields'].detect{|f| f['name'] == 'value' }['type'].last.tap do |inner_list|
+            inner_list.should include('name' => 'OrderedList', 'namespace' => '_flow_list.MyRecord.matrix.list')
+            inner_list['fields'].detect{|f| f['name'] == 'elements' }['type']['items'].tap do |inner_element|
+              inner_element.should include('name' => 'ListElement', 'namespace' => '_flow_list.MyRecord.matrix.list')
+              inner_element['fields'].detect{|f| f['name'] == 'value' }['type'].last.tap do |value_record|
+                value_record.should include('name' => 'Item', 'namespace' => '_flow_record')
+              end
+            end
+          end
+        end
+      end
+    end
   end
 
 
