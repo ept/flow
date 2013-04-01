@@ -2,6 +2,7 @@ require 'avro'
 require 'openssl'
 require 'flow/schema_converter'
 require 'flow/model'
+require 'flow/two_three_tree'
 
 module Flow
   class << self
