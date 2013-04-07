@@ -36,6 +36,11 @@ describe Flow::TwoThreeTree do
         tree.set('a', 42).root.should == val('a', 42)
       end
 
+      it 'should be a no-op if the value is equal' do
+        tree = Flow::TwoThreeTree::Map.new.set('a', 1)
+        tree.set('a', 1).should equal(tree) # compares object identity
+      end
+
       it 'should add an earlier key to an existing 2-node' do
         tree = Flow::TwoThreeTree::Map.new.set('b', 2)
         tree.root.should == val('b', 2)
@@ -81,8 +86,9 @@ describe Flow::TwoThreeTree do
 
     describe 'deletion' do
       it 'should ignore deletion of a nonexistent key' do
-        tree, value = Flow::TwoThreeTree::Map.new.set('a', 1).delete('b')
-        tree.root.should == val('a', 1)
+        tree = Flow::TwoThreeTree::Map.new.set('a', 1)
+        new_tree, value = tree.delete('b')
+        new_tree.should equal(tree) # compares object identity
         value.should be_nil
       end
 
