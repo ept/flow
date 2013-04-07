@@ -256,5 +256,62 @@ describe Flow::TwoThreeTree do
         value.should == 6
       end
     end
+
+
+    describe 'exhaustive test' do
+
+      # Generates all possible 2-3 trees of a given depth, with sequentially numbered keys.
+      def generate(depth, count=0)
+        if depth == 1
+          [val(count, count), val2(count, count, count + 1, count + 1)]
+        else
+          [].tap do |trees|
+            generate(depth - 1, count).each do |left|
+              key = count + left.size
+              generate(depth - 1, key + 1).each do |right|
+                trees << two(left, key, key, right)
+              end
+            end
+
+            generate(depth - 1, count).each do |left|
+              key1 = count + left.size
+              generate(depth - 1, key1 + 1).each do |middle|
+                key2 = key1 + middle.size + 1
+                generate(depth - 1, key2 + 1).each do |right|
+                  trees << three(left, key1, key1, middle, key2, key2, right)
+                end
+              end
+            end
+          end
+        end
+      end
+
+      (2..3).each do |depth|
+        describe "all trees of depth #{depth}" do
+          it 'should allow insertion at any position' do
+            generate(depth).each do |root|
+              tree = Flow::TwoThreeTree::Map.new(root)
+              (0..tree.size).each do |index|
+                new_tree = tree.set(index - 0.5, 'new')
+                new_tree.root.check
+                new_tree.size.should == tree.size + 1
+              end
+            end
+          end
+
+          it 'should allow deletion of any key' do
+            generate(depth).each do |root|
+              tree = Flow::TwoThreeTree::Map.new(root)
+              (0...tree.size).each do |key|
+                new_tree, value = tree.delete(key)
+                new_tree.root.check
+                new_tree.size.should == tree.size - 1
+                value.should == key
+              end
+            end
+          end
+        end
+      end
+    end
   end
 end

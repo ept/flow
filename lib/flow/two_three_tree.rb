@@ -439,6 +439,17 @@ module Flow
         other && self.key == other.key && self.value == other.value &&
           self.left == other.left && self.right == other.right && !other.respond_to?(:middle)
       end
+
+      def check
+        if left.nil? && right.nil?
+          # ok
+        elsif left && right
+          raise BadInternalState, 'left is not less' if left.key >= self.key
+          raise BadInternalState, 'right is not greater' if right.key <= self.key
+        else
+          raise BadInternalState, 'depth mismatch'
+        end
+      end
     end
 
     # @private
@@ -473,6 +484,21 @@ module Flow
           self.key == other.key && self.value == other.value &&
           self.key2 == other.key2 && self.value2 == other.value2 &&
           self.left == other.left && self.middle == other.middle && self.right == other.right
+      end
+
+      def check
+        if left.nil? && middle.nil? && right.nil?
+          # ok
+        elsif left && middle && right
+          raise BadInternalState, 'left is not less than key1' if left.key >= self.key
+          raise BadInternalState, 'left is not less than key2' if left.key >= self.key2
+          raise BadInternalState, 'middle is not greater than key1' if middle.key <= self.key
+          raise BadInternalState, 'middle is not less than key2' if middle.key >= self.key2
+          raise BadInternalState, 'right is not greater than key1' if right.key <= self.key
+          raise BadInternalState, 'right is not greater than key2' if right.key <= self.key2
+        else
+          raise BadInternalState, 'depth mismatch'
+        end
       end
     end
 
