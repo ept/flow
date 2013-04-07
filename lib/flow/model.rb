@@ -103,8 +103,8 @@ module Flow
         end
 
         if app_schema.equal?(self.app_schema)
-          # This is the root type, immediately subclassed by the application. Leave the generated
-          # class anonymous.
+          # This is the root type, which will be assinged to a constant by the application.
+          # Leave the generated class anonymous for now.
           klass = root_class
         else
           class_name = camelcase(app_schema.name)
