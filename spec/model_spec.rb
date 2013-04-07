@@ -3,10 +3,6 @@ require 'spec_helper'
 describe Flow::Model do
 
   describe 'creating model classes' do
-    after do
-      Object.send :remove_const, :MyRecord if defined?(MyRecord)
-    end
-
     it 'should create an anonymous class' do
       klass = Flow::Model.new({'type' => 'record', 'name' => 'MyRecord', 'fields' => []})
       klass.should be_a(Class)
@@ -15,7 +11,7 @@ describe Flow::Model do
     end
 
     it 'should place generated nested classes inside the root class' do
-      MyRecord = Flow::Model.new({
+      stub_const 'MyRecord', Flow::Model.new({
         'type' => 'record', 'name' => 'MyRecord', 'fields' => [
           {'name' => 'nested', 'type' => {
             'type' => 'record', 'name' => 'Nested', 'fields' => []
@@ -28,7 +24,7 @@ describe Flow::Model do
     end
 
     it 'should ignore namespace when generating class names' do
-      MyRecord = Flow::Model.new({
+      stub_const 'MyRecord', Flow::Model.new({
         'type' => 'record', 'name' => 'MyRecord', 'namespace' => 'my.name.space', 'fields' => [
           {'name' => 'nested1', 'type' => {
             'type' => 'record', 'name' => 'Nested', 'fields' => []
@@ -42,7 +38,7 @@ describe Flow::Model do
     end
 
     it 'should use namespaces to disambiguate name clashes' do
-      MyRecord = Flow::Model.new({
+      stub_const 'MyRecord', Flow::Model.new({
         'type' => 'record', 'name' => 'MyRecord', 'namespace' => 'my.name.space', 'fields' => [
           {'name' => 'nested1', 'type' => {
             'type' => 'record', 'name' => 'Nested', 'fields' => []
@@ -62,13 +58,9 @@ describe Flow::Model do
 
 
   describe 'mapping fields to methods' do
-    after do
-      Object.send :remove_const, :MyRecord if defined?(MyRecord)
-    end
-
     describe 'for a versioned primitive field' do
       before do
-        MyRecord = Flow::Model.new({
+        stub_const 'MyRecord', Flow::Model.new({
           'type' => 'record', 'name' => 'MyRecord', 'fields' => [
             {'name' => 'exampleField', 'type' => 'string'}
           ]
