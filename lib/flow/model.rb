@@ -99,6 +99,7 @@ module Flow
       def create_versioned_type(app_schema, flow_schema)
         if class_by_name.include? app_schema.fullname
           app_schema.model_class = class_by_name[app_schema.fullname]
+          flow_schema.model_class = class_by_name[app_schema.fullname]
           return
         end
 
@@ -122,7 +123,9 @@ module Flow
           root_class.const_set(class_name, klass)
         end
 
-        class_by_name[app_schema.fullname] = app_schema.model_class = klass
+        class_by_name[app_schema.fullname] = klass
+        app_schema.model_class = klass
+        flow_schema.model_class = klass
 
         klass.const_set :APP_SCHEMA, app_schema
         klass.const_set :FLOW_SCHEMA, flow_schema
@@ -202,6 +205,18 @@ module Flow
         @record = record
       end
 
+      def to_avro(record=@record)
+        record.each_with_object({}) do |(key, value), new_hash|
+          new_hash[key] = if value.respond_to?:to_avro
+                            value.to_avro
+                          elsif value.is_a? Hash
+                            to_avro(value)
+                          else
+                            value
+                          end
+        end
+      end
+
       private
 
       def local_operation
@@ -250,7 +265,7 @@ module Flow
 
       def serialize(encoder=nil)
         use_encoder = encoder || Avro::IO::BinaryEncoder.new(StringIO.new)
-        Avro::IO::DatumWriter.new(self.class.flow_schema).write(@record, use_encoder)
+        Avro::IO::DatumWriter.new(self.class.flow_schema).write(to_avro, use_encoder)
         use_encoder.writer.string unless encoder
       end
     end

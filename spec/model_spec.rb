@@ -83,5 +83,41 @@ describe Flow::Model do
         parsed.example_field.should == 'hello'
       end
     end
+
+    describe 'for a versioned field holding a nested record' do
+      before do
+        stub_const 'MyRecord', Flow::Model.new({
+          'type' => 'record', 'name' => 'MyRecord', 'fields' => [
+            {'name' => 'nested', 'type' => {
+              'type' => 'record', 'name' => 'Nested', 'fields' => [
+                {'name' => 'exampleField', 'type' => 'string'}
+              ]
+            }}
+          ]
+        })
+      end
+
+      it 'should create reader and writer methods' do
+        record = MyRecord.new
+        record.should be_respond_to(:nested)
+        record.should be_respond_to(:nested=)
+        nested = MyRecord::Nested.new
+        nested.should be_respond_to(:example_field)
+        nested.should be_respond_to(:example_field=)
+
+        record.nested = nested
+        record.nested.example_field = 'hello'
+        record.nested.example_field.should == 'hello'
+      end
+
+      it 'should serialize and parse data' do
+        record = MyRecord.new
+        record.nested = MyRecord::Nested.new
+        record.nested.example_field = 'hello'
+
+        parsed = MyRecord.parse(record.serialize, MyRecord::FLOW_SCHEMA)
+        parsed.nested.example_field.should == 'hello'
+      end
+    end
   end
 end
