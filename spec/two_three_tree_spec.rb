@@ -1,7 +1,7 @@
 require 'spec_helper'
 
 class Flow::TwoThreeTree
-  attr_reader :root
+  public :root
 end
 
 describe Flow::TwoThreeTree do
@@ -318,6 +318,112 @@ describe Flow::TwoThreeTree do
           end
         end
       end
+    end
+
+
+    describe 'read-only methods' do
+      it 'should support #[]' do
+        map = Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 2)
+        map['a'].should == 1
+        map['b'].should == 2
+      end
+
+      it 'should support #include?' do
+        map = Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 2)
+        map.should include('a')
+        map.should_not include('foo')
+      end
+
+      it 'should support #size' do
+        map = Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 2).set('c', 3)
+        map.size.should == 3
+      end
+
+      it 'should support #empty?' do
+        Flow::TwoThreeTree::Map.new.should be_empty
+        Flow::TwoThreeTree::Map.new.set('a', 1).should_not be_empty
+      end
+
+      it 'should support #map' do
+        map = Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 2).set('c', 3).set('d', 4)
+        map.map{|key, value| value * 2 }.should == [2, 4, 6, 8]
+      end
+
+      it 'should support enumerators' do
+        map = Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 2)
+        map.map.with_index{|(key, value), index| "#{index}:#{key}" }.should == ['0:a', '1:b']
+      end
+
+      it 'should support #inject' do
+        map = Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 2).set('c', 3)
+        map.inject(0) {|memo, (key, value)| memo + value }.should == 6
+      end
+
+      it 'should support #==' do
+        map = Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 2)
+        map.should == map
+        map.should == Flow::TwoThreeTree::Map.new.set('b', 2).set('a', 1)
+        map.should_not == Flow::TwoThreeTree::Map.new.set('a', 1)
+        map.should_not == Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 3)
+        map.should_not == Flow::TwoThreeTree::Map.new.set('a', 1).set('b', 2).set('c', 3)
+      end
+
+      it 'should regard maps with different structure, but same content, as equal' do
+        map1 = Flow::TwoThreeTree::Map.new(two(val('a', 1), 'b', 2, val2('c', 3, 'd', 4)))
+        map2 = Flow::TwoThreeTree::Map.new(two(val2('a', 1, 'b', 2), 'c', 3, val('d', 4)))
+        map1.should == map2
+      end
+    end
+  end
+
+
+  describe '::Set' do
+    it 'should support #include?' do
+      set = Flow::TwoThreeTree::Set.new << 'a' << 'b'
+      set.should include('a')
+      set.should_not include('foo')
+    end
+
+    it 'should support #size' do
+      set = Flow::TwoThreeTree::Set.new << 'a' << 'b' << 'c'
+      set.size.should == 3
+    end
+
+    it 'should support #empty?' do
+      Flow::TwoThreeTree::Set.new.should be_empty
+      (Flow::TwoThreeTree::Set.new << 'a').should_not be_empty
+    end
+
+    it 'should support #map' do
+      set = Flow::TwoThreeTree::Set.new << 1 << 2 << 3 << 4
+      set.map{|value| value * value }.should == [1, 4, 9, 16]
+    end
+
+    it 'should support enumerators' do
+      set = Flow::TwoThreeTree::Set.new << 'b' << 'a'
+      set.map.with_index{|value, index| "#{index}:#{value}" }.should == ['0:a', '1:b']
+    end
+
+    it 'should support #inject' do
+      set = Flow::TwoThreeTree::Set.new << 1 << 2 << 3
+      set.inject(0) {|memo, value| memo + value }.should == 6
+    end
+
+    it 'should support #==' do
+      set = Flow::TwoThreeTree::Set.new << 'a' << 'b'
+      set.should == set
+      set.should == (Flow::TwoThreeTree::Set.new << 'b' << 'a')
+      set.should_not == (Flow::TwoThreeTree::Set.new << 'a')
+      set.should_not == (Flow::TwoThreeTree::Set.new << 'a' << 'c')
+      set.should_not == (Flow::TwoThreeTree::Set.new << 'a' << 'b' << 'c')
+    end
+
+    it 'should regard sets with different structure, but same content, as equal' do
+      set1 = Flow::TwoThreeTree::Set.new << 'a' << 'b' << 'c' << 'd'
+      set1.root.key.should == 'b'
+      set2 = Flow::TwoThreeTree::Set.new << 'd' << 'c' << 'b' << 'a'
+      set2.root.key.should == 'c'
+      set1.should == set2
     end
   end
 end

@@ -28,6 +28,8 @@ module Flow
 
     protected
 
+    attr_reader :root
+
     def initialize(root=nil)
       @root = root
     end
@@ -66,6 +68,39 @@ module Flow
       nil
     end
 
+    # Iterates over all tree nodes in key order (depth-first, left-to-right). Yields to the block
+    # with two arguments: the tree node, and a symbol that is either :first or :second, depending on
+    # whether the current position is at a 3-node's key or key2.
+    def each_node(&block)
+      root.each(&block) if root
+    end
+
+    # Compares two trees by walking them both at the same time, and yielding to the given block for
+    # every pair of nodes. This allows deep equality comparison without depending on the exact tree
+    # structure (since the same data can be represented in many different possible trees).
+    def compare_contents(other, &block)
+      return true if self.root.nil? && other.root.nil?
+      return false if self.root.nil? || other.root.nil?
+      me = self.root.to_enum
+      you = other.root.to_enum
+
+      while true
+        my_node = nil
+        begin
+          my_node = me.next
+        rescue StopIteration
+        end
+
+        your_node = nil
+        begin
+          your_node = you.next
+          return false if my_node.nil? || your_node.nil?
+          return false unless yield(my_node, your_node)
+        rescue StopIteration
+          return my_node.nil?
+        end
+      end
+    end
 
     def balance2(left, key, value, right)
       # "Put" on the left or right
@@ -436,8 +471,15 @@ module Flow
       end
 
       def ==(other)
+        return true if self.equal?(other)
         other && self.key == other.key && self.value == other.value &&
           self.left == other.left && self.right == other.right && !other.respond_to?(:middle)
+      end
+
+      def each(&block)
+        left.each(&block) if left
+        yield self, :first
+        right.each(&block) if right
       end
 
       def check
@@ -480,10 +522,19 @@ module Flow
       end
 
       def ==(other)
+        return true if self.equal?(other)
         other.respond_to?(:key2) && other.respond_to?(:value2) && other.respond_to?(:middle) &&
           self.key == other.key && self.value == other.value &&
           self.key2 == other.key2 && self.value2 == other.value2 &&
           self.left == other.left && self.middle == other.middle && self.right == other.right
+      end
+
+      def each(&block)
+        left.each(&block) if left
+        yield self, :first
+        middle.each(&block) if middle
+        yield self, :second
+        right.each(&block) if right
       end
 
       def check
@@ -524,11 +575,9 @@ module Flow
       end
     end
 
+
     class Map < TwoThreeTree
-      def [](key)
-        node = get(key)
-        node.key == key ? node.value : node.value2 if node
-      end
+      include Enumerable
 
       def set(key, value)
         add(key, value)
@@ -539,8 +588,86 @@ module Flow
         [remove(key, value_box), value_box.value]
       end
 
+      def [](key)
+        node = get(key)
+        node.key == key ? node.value : node.value2 if node
+      end
+
+      def include?(key)
+        !!get(key)
+      end
+
       def size
         root ? root.size : 0
+      end
+
+      def empty?
+        size == 0
+      end
+
+      def each(&block)
+        each_node do |node, which|
+          if which == :first
+            yield node.key, node.value
+          else
+            yield node.key2, node.value2
+          end
+        end
+      end
+
+      def ==(other)
+        return true if self.root.equal?(other.root)
+        compare_contents other do |(my_node, my_which), (your_node, your_which)|
+          my_key     = (my_which   == :first ? my_node.key     : my_node.key2    )
+          my_value   = (my_which   == :first ? my_node.value   : my_node.value2  )
+          your_key   = (your_which == :first ? your_node.key   : your_node.key2  )
+          your_value = (your_which == :first ? your_node.value : your_node.value2)
+          my_key == your_key && my_value == your_value
+        end
+      end
+    end
+
+
+    class Set < TwoThreeTree
+      include Enumerable
+
+      def <<(key)
+        add(key, nil)
+      end
+
+      def delete(key)
+        remove(key, Box.new(nil))
+      end
+
+      def include?(key)
+        !!get(key)
+      end
+
+      def size
+        root ? root.size : 0
+      end
+
+      def empty?
+        size == 0
+      end
+
+      def each(&block)
+        each_node do |node, which|
+          if which == :first
+            yield node.key
+          else
+            yield node.key2
+          end
+        end
+      end
+
+      def ==(other)
+        return true if self.root.equal?(other.root)
+        compare_contents other do |(my_node, my_which), (your_node, your_which)|
+          my_key   = (my_which   == :first ? my_node.key   : my_node.key2  )
+          your_key = (your_which == :first ? your_node.key : your_node.key2)
+          my_key == your_key
+        end
       end
     end
   end
