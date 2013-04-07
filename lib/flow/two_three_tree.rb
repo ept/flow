@@ -205,30 +205,30 @@ module Flow
         raise BadInternalState, 'merge(_, E)'
       elsif left.type == 2 && right.type == 2
         # merge(Tr2(t1, a, t2), Tr2(t3, b, t4)) = tr3(Taken(t1), a, merge(t2, t3), b, Taken(t4))
-        three(Taken.new(left.left), left.key, left.value,
-              merge(left.right, right.left),
-              right.key, right.value, Taken.new(right.right))
+        balance3(Taken.new(left.left), left.key, left.value,
+                 merge(left.right, right.left),
+                 right.key, right.value, Taken.new(right.right))
       elsif left.type == 2 && right.type == 3
         # merge(Tr2(t1, a, t2), Tr3(t3, b, t4, c, t5)) = tr3(Taken(t1), a, merge(t2, t3), b, Tr2(t4, c, t5))
-        three(Taken.new(left.left),
-              left.key, left.value,
-              merge(left.right, right.left),
-              right.key, right.value,
-              two(right.middle, right.key2, right.value2, right.right))
+        balance3(Taken.new(left.left),
+                 left.key, left.value,
+                 merge(left.right, right.left),
+                 right.key, right.value,
+                 two(right.middle, right.key2, right.value2, right.right))
       elsif left.type == 3 && right.type == 2
         # merge(Tr3(t1, a, t2, b, t3), Tr2(t4, c, t5)) = tr3(Tr2(t1, a, t2), b, merge(t3, t4), c, Taken(t5))
-        three(two(left.left, left.key, left.value, left.middle),
-              left.key2, left.value2,
-              merge(left.right, right.left),
-              right.key, right.value,
-              Taken.new(right.right))
+        balance3(two(left.left, left.key, left.value, left.middle),
+                 left.key2, left.value2,
+                 merge(left.right, right.left),
+                 right.key, right.value,
+                 Taken.new(right.right))
       elsif left.type == 3 && right.type == 3
         # merge(Tr3(t1, a, t2, b, t3), Tr3(t4, c, t5, d, t6)) = tr3(Tr2(t1, a, t2), b, merge(t3, t4), c, Tr2(t5, d, t6))
-        three(two(left.left, left.key, left.value, left.middle),
-              left.key2, left.value2,
-              merge(left.right, right.left),
-              right.key, right.value,
-              two(right.middle, right.key2, right.value2, right.right))
+        balance3(two(left.left, left.key, left.value, left.middle),
+                 left.key2, left.value2,
+                 merge(left.right, right.left),
+                 right.key, right.value,
+                 two(right.middle, right.key2, right.value2, right.right))
       else
         raise BadInternalState, 'merge of inappropriate trees'
       end
