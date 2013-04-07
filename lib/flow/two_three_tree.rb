@@ -400,14 +400,14 @@ module Flow
       end
     end
 
-    # Create a new 2-node. Subclasses should override this.
+    # Create a new 2-node. Subclasses may override this.
     def two(left, key, value, right)
-      raise NotImplementedError
+      TwoNode.new(left, key, value, right)
     end
 
-    # Create a new 3-node. Subclasses should override this.
+    # Create a new 3-node. Subclasses may override this.
     def three(left, key1, value1, middle, key2, value2, right)
-      raise NotImplementedError
+      ThreeNode.new(left, key1, value1, middle, key2, value2, right)
     end
 
     # A mutable object for simulating multiple return values. The same effect could be achieved
@@ -415,13 +415,88 @@ module Flow
     # @private
     class Box < Struct.new(:value); end
 
+    # @private
+    class TwoNode
+      attr_reader :left, :key, :value, :right, :size
+
+      def initialize(left, key, value, right)
+        @left = left; @key = key; @value = value; @right = right
+        @size = (left && right ? left.size + right.size + 1 : 1)
+      end
+
+      def type; 2; end
+
+      def compare(key_box, value=nil)
+        case comparison = (key_box.value <=> key)
+        when -1 then :left
+        when  0 then :first
+        when +1 then :right
+        else raise BadInternalState, "bad <=> return value #{comparison.inspect}"
+        end
+      end
+
+      def ==(other)
+        other && self.key == other.key && self.value == other.value &&
+          self.left == other.left && self.right == other.right && !other.respond_to?(:middle)
+      end
+    end
+
+    # @private
+    class ThreeNode
+      attr_reader :left, :key, :value, :middle, :key2, :value2, :right, :size
+
+      def initialize(left, key, value, middle, key2, value2, right)
+        @left = left; @key = key; @value = value; @middle = middle
+        @key2 = key2; @value2 = value2; @right = right
+        @size = (left && middle && right ? left.size + middle.size + right.size + 2 : 2)
+      end
+
+      def type; 3; end
+
+      def compare(key_box, value=nil)
+        case comparison1 = (key_box.value <=> key)
+        when -1 then :left
+        when  0 then :first
+        when +1
+          case comparision2 = (key_box.value <=> key2)
+          when -1 then :middle
+          when  0 then :second
+          when +1 then :right
+          else raise BadInternalState, "bad <=> return value #{comparison2.inspect}"
+          end
+        else raise BadInternalState, "bad <=> return value #{comparison1.inspect}"
+        end
+      end
+
+      def ==(other)
+        other.respond_to?(:key2) && other.respond_to?(:value2) && other.respond_to?(:middle) &&
+          self.key == other.key && self.value == other.value &&
+          self.key2 == other.key2 && self.value2 == other.value2 &&
+          self.left == other.left && self.middle == other.middle && self.right == other.right
+      end
+    end
+
     # A temporary placeholder for a 2-node that doesn't count towards tree depth.
     # @private
-    class Put < Struct.new(:left, :key, :value, :right); end
+    class Put
+      attr_reader :left, :key, :value, :right, :size
+
+      def initialize(left, key, value, right)
+        @left = left; @key = key; @value = value; @right = right
+        @size = (left && right ? left.size + right.size + 1 : 1)
+      end
+    end
 
     # A temporary placeholder for one additional level of tree depth.
     # @private
-    class Taken < Struct.new(:tree); end
+    class Taken
+      attr_reader :tree, :size
+
+      def initialize(tree)
+        @tree = tree
+        @size = (tree ? tree.size : 0)
+      end
+    end
 
     class Map < TwoThreeTree
       def [](key)
@@ -438,73 +513,8 @@ module Flow
         [remove(key, value_box), value_box.value]
       end
 
-      private
-
-      def two(left, key, value, right)
-        TwoNode.new(left, key, value, right)
-      end
-
-      def three(left, key1, value1, middle, key2, value2, right)
-        ThreeNode.new(left, key1, value1, middle, key2, value2, right)
-      end
-
-      # @private
-      class TwoNode
-        attr_reader :left, :key, :value, :right
-
-        def initialize(left, key, value, right)
-          @left = left; @key = key; @value = value; @right = right
-        end
-
-        def type; 2; end
-
-        def compare(key_box, value=nil)
-          case comparison = (key_box.value <=> key)
-          when -1 then :left
-          when  0 then :first
-          when +1 then :right
-          else raise BadInternalState, "bad <=> return value #{comparison.inspect}"
-          end
-        end
-
-        def ==(other)
-          other && self.key == other.key && self.value == other.value &&
-            self.left == other.left && self.right == other.right && !other.respond_to?(:middle)
-        end
-      end
-
-      # @private
-      class ThreeNode
-        attr_reader :left, :key, :value, :middle, :key2, :value2, :right
-
-        def initialize(left, key, value, middle, key2, value2, right)
-          @left = left; @key = key; @value = value; @middle = middle
-          @key2 = key2; @value2 = value2; @right = right
-        end
-
-        def type; 3; end
-
-        def compare(key_box, value=nil)
-          case comparison1 = (key_box.value <=> key)
-          when -1 then :left
-          when  0 then :first
-          when +1
-            case comparision2 = (key_box.value <=> key2)
-            when -1 then :middle
-            when  0 then :second
-            when +1 then :right
-            else raise BadInternalState, "bad <=> return value #{comparison2.inspect}"
-            end
-          else raise BadInternalState, "bad <=> return value #{comparison1.inspect}"
-          end
-        end
-
-        def ==(other)
-          other.respond_to?(:key2) && other.respond_to?(:value2) && other.respond_to?(:middle) &&
-            self.key == other.key && self.value == other.value &&
-            self.key2 == other.key2 && self.value2 == other.value2 &&
-            self.left == other.left && self.middle == other.middle && self.right == other.right
-        end
+      def size
+        root ? root.size : 0
       end
     end
   end

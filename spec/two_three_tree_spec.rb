@@ -8,19 +8,19 @@ describe Flow::TwoThreeTree do
 
   describe '::Map' do
     def two(left, key, value, right)
-      Flow::TwoThreeTree::Map::TwoNode.new(left, key, value, right)
+      Flow::TwoThreeTree::TwoNode.new(left, key, value, right)
     end
 
     def three(left, key1, value1, middle, key2, value2, right)
-      Flow::TwoThreeTree::Map::ThreeNode.new(left, key1, value1, middle, key2, value2, right)
+      Flow::TwoThreeTree::ThreeNode.new(left, key1, value1, middle, key2, value2, right)
     end
 
     def val(key, value)
-      Flow::TwoThreeTree::Map::TwoNode.new(nil, key, value, nil)
+      Flow::TwoThreeTree::TwoNode.new(nil, key, value, nil)
     end
 
     def val2(key1, value1, key2, value2)
-      Flow::TwoThreeTree::Map::ThreeNode.new(nil, key1, value1, nil, key2, value2, nil)
+      Flow::TwoThreeTree::ThreeNode.new(nil, key1, value1, nil, key2, value2, nil)
     end
 
     describe 'insertion' do
