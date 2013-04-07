@@ -466,6 +466,11 @@ module Flow
           else raise BadInternalState, "bad <=> return value #{comparison.inspect}"
           end
         end
+
+        def ==(other)
+          other && self.key == other.key && self.value == other.value &&
+            self.left == other.left && self.right == other.right && !other.respond_to?(:middle)
+        end
       end
 
       # @private
@@ -492,6 +497,13 @@ module Flow
             end
           else raise BadInternalState, "bad <=> return value #{comparison1.inspect}"
           end
+        end
+
+        def ==(other)
+          other.respond_to?(:key2) && other.respond_to?(:value2) && other.respond_to?(:middle) &&
+            self.key == other.key && self.value == other.value &&
+            self.key2 == other.key2 && self.value2 == other.value2 &&
+            self.left == other.left && self.middle == other.middle && self.right == other.right
         end
       end
     end
