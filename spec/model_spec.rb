@@ -71,14 +71,19 @@ describe Flow::Model do
         record = MyRecord.new
         record.should be_respond_to(:example_field)
         record.should be_respond_to(:example_field=)
-        record.example_field.should be_nil
-        record.example_field = 'hello'
-        record.example_field.should == 'hello'
+
+        Flow.transaction do
+          record.example_field.should be_nil
+          record.example_field = 'hello'
+          record.example_field.should == 'hello'
+        end
       end
 
       it 'should serialize and parse data' do
-        record = MyRecord.new
-        record.example_field = 'hello'
+        Flow.transaction do
+          record = MyRecord.new
+          record.example_field = 'hello'
+        end
         parsed = MyRecord.parse(record.serialize, MyRecord::FLOW_SCHEMA)
         parsed.example_field.should == 'hello'
       end
@@ -105,15 +110,19 @@ describe Flow::Model do
         nested.should be_respond_to(:example_field)
         nested.should be_respond_to(:example_field=)
 
-        record.nested = nested
-        record.nested.example_field = 'hello'
-        record.nested.example_field.should == 'hello'
+        Flow.transaction do
+          record.nested = nested
+          record.nested.example_field = 'hello'
+          record.nested.example_field.should == 'hello'
+        end
       end
 
       it 'should serialize and parse data' do
-        record = MyRecord.new
-        record.nested = MyRecord::Nested.new
-        record.nested.example_field = 'hello'
+        Flow.transaction do
+          record = MyRecord.new
+          record.nested = MyRecord::Nested.new
+          record.nested.example_field = 'hello'
+        end
 
         parsed = MyRecord.parse(record.serialize, MyRecord::FLOW_SCHEMA)
         parsed.nested.example_field.should == 'hello'

@@ -3,6 +3,23 @@ module Avro
     class RecordSchema
       attr_accessor :model_class
     end
+
+    class Field
+      def underscore_name
+        @underscore_name ||= underscore(name).to_sym
+      end
+
+      private
+
+      # 'FooBarBaz' => 'foo_bar_baz'
+      def underscore(name)
+        name.
+          gsub(/([A-Z0-9]+)([A-Z][a-z])/, '\1_\2').
+          gsub(/([a-z0-9])([A-Z])/, '\1_\2').
+          gsub(/[^a-z0-9]+/i, '_').
+          downcase
+      end
+    end
   end
 end
 
@@ -127,56 +144,101 @@ module Flow
         app_schema.model_class = klass
         flow_schema.model_class = klass
 
+        accessor_class = Class.new(klass) do |accessor_class|
+          attr_reader :flow_transaction, :flow_accessor_path
+          define_method(:model_class) { klass }
+
+          def initialize(model, transaction, accessor_path)
+            self.class.flow_schema.fields.each do |field|
+              ivar_name = :"@#{field.underscore_name}"
+              instance_variable_set(ivar_name, model.instance_variable_get(ivar_name))
+            end
+            @flow_transaction = transaction
+            @flow_accessor_path = accessor_path
+          end
+        end
+
         klass.const_set :APP_SCHEMA, app_schema
         klass.const_set :FLOW_SCHEMA, flow_schema
         klass.const_set :DatumReader, make_datum_reader(klass)
+        klass.const_set :PathAccessor, accessor_class
         class << klass
           define_method(:app_schema) { const_get(:APP_SCHEMA) }
           define_method(:flow_schema) { const_get(:FLOW_SCHEMA) }
           define_method(:datum_reader_class) { const_get(:DatumReader) }
+          define_method(:path_accessor_class) { const_get(:PathAccessor) }
         end
 
         app_schema.fields.each do |app_field|
           flow_field = flow_schema.fields.detect{|field| field.name == app_field.name }
           raise "Field #{app_schema.fullname}.#{app_field.name} does not appear in flow schema" unless flow_field
-          create_accessors(klass, app_field, flow_field)
+          create_accessors(klass, accessor_class, app_field, flow_field)
         end
       end
 
       # Create friendly accessor methods for Avro record fields
-      def create_accessors(klass, app_field, flow_field)
+      def create_accessors(model_class, accessor_class, app_field, flow_field)
         unless flow_schema.is_a? Avro::Schema::RecordSchema
-          create_unversioned_accessors(klass, app_field, flow_field)
+          create_unversioned_accessors(model_class, accessor_class, app_field, flow_field)
           return
         end
 
         namespace = (flow_field.type.namespace || '').split('.')
 
         if namespace.include?('_flow_versioned') || flow_field.type.fullname =~ /\Acom\.flowprotocol\.crdt\.(Versioned|Optional)/
-          create_versioned_accessors(klass, app_field, flow_field)
+          create_versioned_accessors(model_class, accessor_class, app_field, flow_field)
         else
-          create_unversioned_accessors(klass, app_field, flow_field)
+          create_unversioned_accessors(model_class, accessor_class, app_field, flow_field)
         end
       end
 
-      def create_unversioned_accessors(klass, app_field, flow_field)
-        method_name = underscore(app_field.name).to_sym
-        klass.class_eval do
-          define_method(method_name) { @record[app_field.name] }
-          define_method(:"#{method_name}=") {|value| @record[app_field.name] = value }
+      def create_unversioned_accessors(model_class, accessor_class, app_field, flow_field)
+        model_class.class_eval do
+          attr_reader app_field.underscore_name
+          define_method(:"#{app_field.underscore_name}=") {|value| raise NotImplementedError }
         end
       end
 
-      def create_versioned_accessors(klass, app_field, flow_field)
-        method_name = underscore(app_field.name).to_sym
-        klass.class_eval do
-          define_method(method_name) do
-            versioned = @record[app_field.name]
-            versioned && versioned['value']
+      def create_versioned_accessors(model_class, accessor_class, app_field, flow_field)
+        model_class.class_eval do
+          define_method(app_field.underscore_name) do
+            if Flow::Transaction.current
+              make_path_accessor.send(app_field.underscore_name)
+            else
+              versioned = instance_variable_get(:"@#{app_field.underscore_name}")
+              versioned && versioned['value']
+            end
           end
 
-          define_method(:"#{method_name}=") do |value|
-            @record[app_field.name] = {'version' => local_operation, 'value' => value}
+          setter_name = :"#{app_field.underscore_name}="
+          define_method(setter_name) do |value|
+            make_path_accessor.send(setter_name, value)
+          end
+        end
+
+        accessor_class.class_eval do
+          define_method(app_field.underscore_name) do
+            if flow_transaction.equal?(Flow::Transaction.current)
+              versioned = instance_variable_get(:"@#{app_field.underscore_name}")
+              value = versioned && versioned['value']
+              if value.is_a? Flow::Model::Base
+                # TODO search the transaction for an updated version of this model (even if it's not
+                # the root), to handle code like this:
+                # foo = root.foos.first; foo.field1 = 'x'; foo.field2 = 'y'
+                value.class.path_accessor_class.new(value, flow_transaction, flow_accessor_path + [app_field.underscore_name])
+              else
+                value
+              end
+            else
+              raise 'Accessors cannot be used outside of their transaction'
+            end
+          end
+
+          setter_name = :"#{app_field.underscore_name}="
+          define_method(setter_name) do |value|
+            # TODO make a copy of model with updated field value, propagate up the accessor path,
+            # register updated model objects in the transaction
+            raise NotImplementedError
           end
         end
       end
@@ -185,15 +247,6 @@ module Flow
       def camelcase(name)
         name.gsub(/(?:^|[^a-z0-9]+)([a-z0-9]+)/i) { $1.capitalize }
       end
-
-      # 'FooBarBaz' => 'foo_bar_baz'
-      def underscore(name)
-        name.
-          gsub(/([A-Z0-9]+)([A-Z][a-z])/, '\1_\2').
-          gsub(/([a-z0-9])([A-Z])/, '\1_\2').
-          gsub(/[^a-z0-9]+/i, '_').
-          downcase
-      end
     end
 
     # Base class for all classes dynamically created by Flow::Model.new.
@@ -201,26 +254,37 @@ module Flow
     class Base
       # record is a hash of field name => value
       def initialize(record={})
-        raise ArgumentError, "expected Hash, got #{record.inspect}" unless record.is_a? Hash
-        @record = record
+        self.class.flow_schema.fields.each do |field|
+          ivar_name = :"@#{field.underscore_name}"
+          instance_variable_set(ivar_name, record[field.name] || record[field.underscore_name])
+        end
       end
 
-      def to_avro(record=@record)
-        record.each_with_object({}) do |(key, value), new_hash|
-          new_hash[key] = if value.respond_to?:to_avro
-                            value.to_avro
-                          elsif value.is_a? Hash
-                            to_avro(value)
-                          else
-                            value
-                          end
+      def to_avro
+        self.class.flow_schema.fields.each_with_object({}) do |field, hash|
+          value = instance_variable_get(:"@#{field.underscore_name}")
+          hash[field.name] = value_to_avro(value)
         end
       end
 
       private
 
+      def value_to_avro(value)
+        if value.respond_to? :to_avro
+          value.to_avro
+        elsif value.is_a?(Hash) && value['version']
+          value.merge('value' => value_to_avro(value['value']))
+        else
+          value
+        end
+      end
+
+      def make_path_accessor(*args)
+        raise 'Please start from the root when accessing models inside a transaction'
+      end
+
       def local_operation
-        vector = (@record['_flowVectorClock'] ||= [])
+        vector = (@_flow_vector_clock ||= [])
         if this_peer = vector.detect {|entry| entry['peerID'] == Flow.peer_id }
           this_peer['count'] += 0
         else
@@ -267,6 +331,17 @@ module Flow
         use_encoder = encoder || Avro::IO::BinaryEncoder.new(StringIO.new)
         Avro::IO::DatumWriter.new(self.class.flow_schema).write(to_avro, use_encoder)
         use_encoder.writer.string unless encoder
+      end
+
+      private
+
+      def make_path_accessor
+        if Flow::Transaction.current
+          latest = Flow::Transaction.current.latest_root_version(self)
+          self.class.path_accessor_class.new(latest, Flow::Transaction.current, [latest])
+        else
+          raise 'Modifications are only allowed in a transaction. Please wrap your code in Flow.transaction { ... }'
+        end
       end
     end
   end
