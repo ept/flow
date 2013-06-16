@@ -1,0 +1,169 @@
+[
+    {
+        "name": "com.flowprotocol.crdt.VectorClockEntry",
+        "type": "record",
+        "doc": "One entry in a vector clock: the count of modifications made by a particular peer.",
+        "fields": [
+            {
+                "name": "peerID",
+                "doc": "Unique identifier of the peer that made the modifications.",
+                "type": {
+                    "type": "fixed",
+                    "name": "PeerID",
+                    "doc": "64-bit probabilistically unique random identifier, used to identify a particular peer. A peer might be server, a client, an end-user device, a web browser, a thread, etc. — basically any two actors that can concurrently modify a replicated data structure should be different peers.",
+                    "size": 8
+                }
+            },
+            {
+                "name": "count",
+                "doc": "Number of modifications to this data structure made by this peer.",
+                "default": 0,
+                "type": "long"
+            }
+        ]
+    },
+
+    {
+        "name": "com.flowprotocol.crdt.VectorClockVersion",
+        "type": "record",
+        "doc": "A per-datastructure-unique, totally ordered version identifier that is derived from a vector clock. Based on the S4Vector of Roh et al., but simplified.",
+        "fields": [
+            {
+                "name": "vectorClockSum",
+                "doc": "The sum of all the entries' counts in the vector clock from which this record is derived.",
+                "type": "long"
+            },
+            {
+                "name": "lastWriterID",
+                "doc": "Unique identifier of the peer that most recently modified the data structure.",
+                "type": "PeerID"
+            }
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.VersionedBoolean",
+        "fields": [
+            {"name": "value",   "type": "boolean"},
+            {"name": "version", "type": "VectorClockVersion"}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.VersionedInt",
+        "fields": [
+            {"name": "value",   "type": "int"},
+            {"name": "version", "type": "VectorClockVersion"}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.VersionedLong",
+        "fields": [
+            {"name": "value",   "type": "long"},
+            {"name": "version", "type": "VectorClockVersion"}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.VersionedFloat",
+        "fields": [
+            {"name": "value",   "type": "float"},
+            {"name": "version", "type": "VectorClockVersion"}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.VersionedDouble",
+        "fields": [
+            {"name": "value",   "type": "double"},
+            {"name": "version", "type": "VectorClockVersion"}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.VersionedBytes",
+        "fields": [
+            {"name": "value",   "type": "bytes"},
+            {"name": "version", "type": "VectorClockVersion"}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.VersionedString",
+        "fields": [
+            {"name": "value",   "type": "string"},
+            {"name": "version", "type": "VectorClockVersion"}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.OptionalBoolean",
+        "fields": [
+            {"name": "value",   "type": ["null", "boolean"],            "default": null},
+            {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.OptionalInt",
+        "fields": [
+            {"name": "value",   "type": ["null", "int"],                "default": null},
+            {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.OptionalLong",
+        "fields": [
+            {"name": "value",   "type": ["null", "long"],               "default": null},
+            {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.OptionalFloat",
+        "fields": [
+            {"name": "value",   "type": ["null", "float"],              "default": null},
+            {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.OptionalDouble",
+        "fields": [
+            {"name": "value",   "type": ["null", "double"],             "default": null},
+            {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.OptionalBytes",
+        "fields": [
+            {"name": "value",   "type": ["null", "bytes"],              "default": null},
+            {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+        ]
+    },
+
+    {
+        "type": "record",
+        "name": "com.flowprotocol.crdt.OptionalString",
+        "fields": [
+            {"name": "value",   "type": ["null", "string"],             "default": null},
+            {"name": "version", "type": ["null", "VectorClockVersion"], "default": null}
+        ]
+    }
+]

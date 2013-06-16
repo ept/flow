@@ -55,8 +55,8 @@ module Flow
       def flow_named_types
         unless @flow_named_types
           @flow_named_types = {}
-          schema_file = File.expand_path('../../crdt_replica.avsc', File.dirname(__FILE__))
-          Avro::Schema.real_parse(Yajl.load(File.read(schema_file)), @flow_named_types)
+          types_file = File.expand_path('../../crdt_types.avsc', File.dirname(__FILE__))
+          Avro::Schema.real_parse(Yajl.load(File.read(types_file)), @flow_named_types)
         end
         @flow_named_types.dup
       end
