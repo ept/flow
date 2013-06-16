@@ -121,7 +121,7 @@ module Flow
         end
 
         if app_schema.equal?(self.app_schema)
-          # This is the root type, which will be assinged to a constant by the application.
+          # This is the root type, which will be assigned to a constant by the application.
           # Leave the generated class anonymous for now.
           klass = root_class
         else
@@ -145,17 +145,8 @@ module Flow
         flow_schema.model_class = klass
 
         accessor_class = Class.new(klass) do |accessor_class|
-          attr_reader :flow_transaction, :flow_accessor_path
+          include Accessor
           define_method(:model_class) { klass }
-
-          def initialize(model, transaction, accessor_path)
-            self.class.flow_schema.fields.each do |field|
-              ivar_name = :"@#{field.underscore_name}"
-              instance_variable_set(ivar_name, model.instance_variable_get(ivar_name))
-            end
-            @flow_transaction = transaction
-            @flow_accessor_path = accessor_path
-          end
         end
 
         klass.const_set :APP_SCHEMA, app_schema
@@ -203,7 +194,7 @@ module Flow
         model_class.class_eval do
           define_method(app_field.underscore_name) do
             if Flow::Transaction.current
-              make_path_accessor.send(app_field.underscore_name)
+              make_root_accessor.send(app_field.underscore_name)
             else
               versioned = instance_variable_get(:"@#{app_field.underscore_name}")
               versioned && versioned['value']
@@ -212,33 +203,35 @@ module Flow
 
           setter_name = :"#{app_field.underscore_name}="
           define_method(setter_name) do |value|
-            make_path_accessor.send(setter_name, value)
+            make_root_accessor.send(setter_name, value)
           end
         end
 
         accessor_class.class_eval do
           define_method(app_field.underscore_name) do
-            if flow_transaction.equal?(Flow::Transaction.current)
-              versioned = instance_variable_get(:"@#{app_field.underscore_name}")
-              value = versioned && versioned['value']
-              if value.is_a? Flow::Model::Base
-                # TODO search the transaction for an updated version of this model (even if it's not
-                # the root), to handle code like this:
-                # foo = root.foos.first; foo.field1 = 'x'; foo.field2 = 'y'
-                value.class.path_accessor_class.new(value, flow_transaction, flow_accessor_path + [app_field.underscore_name])
-              else
-                value
-              end
-            else
+            unless flow_transaction.equal?(Flow::Transaction.current)
               raise 'Accessors cannot be used outside of their transaction'
+            end
+            versioned = instance_variable_get(:"@#{app_field.underscore_name}")
+            value = versioned && versioned['value']
+            if value.is_a? Flow::Model::Base
+              value.path_accessor(flow_accessor_path + [app_field.underscore_name])
+            else
+              value
             end
           end
 
           setter_name = :"#{app_field.underscore_name}="
           define_method(setter_name) do |value|
-            # TODO make a copy of model with updated field value, propagate up the accessor path,
-            # register updated model objects in the transaction
-            raise NotImplementedError
+            if flow_transaction.equal?(Flow::Transaction.current)
+              versioned = {'value' => value, 'version' => local_operation}
+              instance_variable_set(:"@#{app_field.underscore_name}", versioned)
+              # TODO register this accessor object as the updated version of the model for this transaction.
+              # (Only need to copy an object once per transaction, even when updating multiple fields.)
+              # Then propagate up the accessor path.
+            else
+              raise 'Accessors cannot be used outside of their transaction'
+            end
           end
         end
       end
@@ -257,6 +250,20 @@ module Flow
         self.class.flow_schema.fields.each do |field|
           ivar_name = :"@#{field.underscore_name}"
           instance_variable_set(ivar_name, record[field.name] || record[field.underscore_name])
+        end
+      end
+
+      def path_accessor(path)
+        trans = Flow::Transaction.current
+        if trans
+          accessor = trans.get_accessor(self)
+          if accessor.nil?
+            accessor = self.class.path_accessor_class.new(self, trans, path + [self])
+            trans.add_accessor(self, accessor)
+          end
+          accessor
+        else
+          raise 'Modifications are only allowed in a transaction. Please wrap your code in Flow.transaction { ... }'
         end
       end
 
@@ -279,8 +286,45 @@ module Flow
         end
       end
 
-      def make_path_accessor(*args)
+      def make_root_accessor(*args)
         raise 'Please start from the root when accessing models inside a transaction'
+      end
+    end
+
+    # Each model class has an accessor subclass that is used for making modifications. This module
+    # is included into each such accessor class.
+    module Accessor
+      attr_reader :flow_original_model, :flow_transaction, :flow_accessor_path
+
+      def initialize(model, transaction, accessor_path)
+        self.class.flow_schema.fields.each do |field|
+          ivar_name = :"@#{field.underscore_name}"
+          instance_variable_set(ivar_name, model.instance_variable_get(ivar_name))
+        end
+        @flow_original_model = model
+        @flow_transaction = transaction
+        @flow_accessor_path = accessor_path
+      end
+
+      def path_accessor(path)
+        # TODO check whether we previously reached this accessor through a different path.
+        # We want our object graph to be a tree, not a DAG.
+        self
+      end
+
+      def updated_model
+        model_class.new(to_avro)
+      end
+
+      private
+
+      def value_to_avro(value)
+        if value.respond_to? :to_avro
+          accessor = flow_transaction.get_accessor(value)
+          accessor ? accessor.to_avro : value.to_avro
+        else
+          super
+        end
       end
 
       def local_operation
@@ -335,13 +379,8 @@ module Flow
 
       private
 
-      def make_path_accessor
-        if Flow::Transaction.current
-          latest = Flow::Transaction.current.latest_root_version(self)
-          self.class.path_accessor_class.new(latest, Flow::Transaction.current, [latest])
-        else
-          raise 'Modifications are only allowed in a transaction. Please wrap your code in Flow.transaction { ... }'
-        end
+      def make_root_accessor
+        path_accessor([])
       end
     end
   end

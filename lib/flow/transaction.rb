@@ -8,39 +8,46 @@ module Flow
 
     def enter
       raise 'already in a transaction' if Transaction.current
+      raise 'already entered this transaction' if @entered
+      @entered = true
       Thread.current[:flow_transaction] = self
     end
 
     def exit
       raise 'current transaction does not match' unless self.equal?(Transaction.current)
+      raise 'not yet entered this transaction' unless @entered
+      raise 'already existed this transaction' if @exited
+      @exited = true
       Thread.current[:flow_transaction] = nil
     end
 
-    def updated_roots
-      @updated_roots ||= []
+    def updated(model)
+      raise 'call #updated when the transaction is complete' unless @exited
+      accessor = get_accessor(model)
+      accessor ? accessor.updated_model : model
     end
 
-    def add_updated_root(old_root, new_root)
-      predecessor = updated_roots.detect{|old, new| new.equal? old_root }
-      if predecessor
-        predecessor[1] = new_root
-      else
-        updated_roots << [old_root, new_root]
-      end
+    def accessors
+      @accessors ||= []
     end
 
-    def latest_root_version(old_root)
-      # TODO use a hash map with object_id as key?
-      update = updated_roots.detect{|old, new| old.equal? old_root }
-      update ? update[1] : old_root
+    def add_accessor(model, accessor)
+      raise 'model has duplicate accessors' if get_accessor(model)
+      accessors << [model, accessor]
+    end
+
+    def get_accessor(model)
+      accessor = accessors.detect{|old, new| old.equal? model }
+      accessor[1] if accessor
     end
   end
 
   def self.transaction(&block)
-    t = Transaction.new.tap(&:enter)
+    tx = Transaction.new
+    tx.enter
     yield
-    updated_roots
+    tx
   ensure
-    t.exit
+    tx.exit
   end
 end

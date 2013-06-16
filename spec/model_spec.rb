@@ -80,10 +80,10 @@ describe Flow::Model do
       end
 
       it 'should serialize and parse data' do
-        Flow.transaction do
+        record = Flow.transaction do
           record = MyRecord.new
           record.example_field = 'hello'
-        end
+        end.updated(record)
         parsed = MyRecord.parse(record.serialize, MyRecord::FLOW_SCHEMA)
         parsed.example_field.should == 'hello'
       end
@@ -118,11 +118,11 @@ describe Flow::Model do
       end
 
       it 'should serialize and parse data' do
-        Flow.transaction do
+        record = Flow.transaction do
           record = MyRecord.new
           record.nested = MyRecord::Nested.new
           record.nested.example_field = 'hello'
-        end
+        end.updated(record)
 
         parsed = MyRecord.parse(record.serialize, MyRecord::FLOW_SCHEMA)
         parsed.nested.example_field.should == 'hello'
