@@ -45,9 +45,11 @@ module Flow
   def self.transaction(&block)
     tx = Transaction.new
     tx.enter
-    yield
+    begin
+      yield
+    ensure
+      tx.exit
+    end
     tx
-  ensure
-    tx.exit
   end
 end

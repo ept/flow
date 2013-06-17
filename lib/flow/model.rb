@@ -279,7 +279,7 @@ module Flow
       def value_to_avro(value)
         if value.respond_to? :to_avro
           value.to_avro
-        elsif value.is_a?(Hash) && value['version']
+        elsif value.is_a?(Hash) && value['version'] # TODO handle Avro maps that have 'version' as a key
           value.merge('value' => value_to_avro(value['value']))
         else
           value
@@ -313,17 +313,24 @@ module Flow
       end
 
       def updated_model
-        model_class.new(to_avro)
+        fields = self.class.flow_schema.fields.each_with_object({}) do |field, hash|
+          value = instance_variable_get(:"@#{field.underscore_name}")
+          hash[field.name] = updated_field(value)
+        end
+        model_class.new(fields)
       end
 
       private
 
-      def value_to_avro(value)
-        if value.respond_to? :to_avro
+      def updated_field(value)
+        if value.is_a? Flow::Model::Base
           accessor = flow_transaction.get_accessor(value)
-          accessor ? accessor.to_avro : value.to_avro
+          return accessor.updated_model if accessor
+          value.respond_to?(:updated_model) ? value.updated_model : value
+        elsif value.is_a?(Hash) && value['version'] # TODO handle Avro maps that have 'version' as a key
+          value.merge('value' => updated_field(value['value']))
         else
-          super
+          value
         end
       end
 
