@@ -1,0 +1,126 @@
+Names:
+
+* cfsync.com (conflict-free sync)
+* synchrotron (hard to seo, nobody can spell it)
+
+Avro data structures:
+
+* record
+  - default field semantics: last writer wins (LWW)
+  - alternative for int/long fields: counter
+  - multi-value and manual resolution: possible, but requires that peers implement resolution
+    rules consistently everywhere. Maybe not a good idea
+  - allow "atomic" records: writing any field is treated the same as replacing the entire record
+    (i.e. an update to the parent field referencing the record)
+* array
+  - ordered list semantics: prepend, append, insert between, delete named element
+  - sorted list semantics: use Avro sort order? (very restrictive: lexicographic by field name,
+    cannot compare maps)
+  - set semantics: OR-set is good. Specify subset of fields as unique key? If so, how to ensure
+    consistency if an item with the same key but different non-key fields is added?
+* map -> like record, but with dynamic keys, and LWW semantics only
+* all other types are atomic and immutable
+
+Collection of records (table) as a whole:
+
+* Act as a set (with unique guarantee)? Performance impact? (We probably only want to support
+  in-memory dataset size for now, so maybe doesn't matter)
+* Or as a bag, like SQL? Will this tempt people to perform exist check and insert if not present?
+  (--> race condition)
+* Or simpler, just have a record as root type and declare any collection explicitly?
+
+Bootstrapping new clients:
+
+* Send complete serialized state snapshot (which must include all hidden state, not just state
+  exposed to the application)
+* In relay model, just start sending all operations received since the serialized snapshot
+* In peer-to-peer model, need to start by bootstrapping off one peer, then registering with other
+  peers; either newly connected peers need to replay some amount of history that was missed, or
+  bootstrap peer needs to relay until a direct connection is established. (The latter is probably
+  simpler as relaying is needed anyway, saves maintaining an operation log)
+
+Client crash recovery:
+
+* Periodically serialize the whole CRDT state to disk. There may be additional run-time state
+  (e.g. hashes used as indexes to turn O(N) into O(1)) but that can be derived from the CRDT
+  state when it is loaded.
+* Client keeps high watermark of operations seen -- assuming some kind of monotonic versioning?
+* Hash of object tree for fast comparison. What does git do?
+
+Schema transformation:
+
+* Take application schema and transform it into another schema that includes all the hidden state
+  (needed for bootstrapping clients and for persisting clients' state to disk)
+* Make sure this works with recursive schemas, too
+* LWW field becomes (value, version, lastWriterID); version is incremented on every change,
+  and concurrent increments are resolved by ordering of writer IDs.
+* Counter field can remain just an int, provided that we can accurately tell which operations
+  have and haven't been processed.
+* Set becomes map of hash-code => (list of (value, unique-tag, removed?))
+  - hash-code is arbitrary, just to save linear scans
+  - unique-tag can be random, no order required
+  - removed? is only set if a removal instruction is received for a unique-tag that we don't know.
+    In that case, mark it as removed so that when the addition later comes in, they cancel each
+    other out. (We don't need to keep a tombstone provided that if the same element is added twice,
+    each addition is with a different unique-tag.)
+* Ordered list (as Replicated Growing Array, RGA) becomes:
+  map of unique-tag => (
+    value,
+    version, // for LWW assignment only
+    last-writer-id, // for LWW assignment only
+    previous: unique-tag, // or does this need to be a list, to support multiple edges?
+    next: unique-tag, // or does this need to be a list, to support multiple edges?
+    status: not-yet-added, added, deleted, deleted-before-added // for tombstone & pre-conditions
+  )
+  - special unique-tag values α and ω as sentinels (first and last)
+  - in order to make value overwritable, use LWW-field construction
+  - unique-tags need to be long enough to have low collision probability given an expected number
+    of edit operations while offline. If each character is an edit operation, that can add up
+    quickly (in a text editing example, need to consider edits in the entire document, not just
+    in a paragraph, assuming that you want to be able to remove line breaks). 48 bits minimum?
+    Might as well make it 64...
+
+Schema changes:
+
+* Mixture of peers with older and newer versions of the schema.
+* Tag every message with the schema version?
+* Establish a schema once per connection, and have the relay rewrite schema versions as needed?
+
+Transfer protocol:
+
+* Include a vector clock so that we can preserve causal order (any operations that are not yet
+  causally ready are put in a queue, cf. Roh et al. §2.1). This can also be used for figuring
+  out from what point we need to replay operations after being disconnected. One vector clock
+  for the entire system state should be sufficient? Or better to use a separate vector clock
+  per data structure (so that the numbers are kept small)?
+* Things are simpler if we can assume a central server that serializes writes. This removes
+  some causality edge-cases, and more importantly, solves a liveness problem. Say A performs
+  an operation, B gets the message, but C doesn't. B performs further operations on top of A's
+  operation, and sends them to A and C. C must delay the operations from B until it receives
+  the retransmitted message from A. This cannot happen if all operations go through a central
+  server, since all recipients receive them in the same order. Also, we can make the server be
+  in charge of storing a log and replaying it to clients that crashed, disconnected or joined
+  late.
+* The server can sequentially number messages, and clients can catch up by sending the high
+  water mark of messages they've seen so far.
+* Exchange Avro schemas on connection setup, then include a hash of the schema in every message.
+  Note the value of a message may be any record type in the schema; support hashing each named
+  type in a schema, and using that to identify the record type being sent.
+* Need some way of describing the path taken to the field being modified. For record fields and
+  enums, use their position in the schema as numerical encoding. For sorted lists, use s4vector.
+  For sets, use unique-tag.
+
+Use on the web:
+
+* Clients' system clocks may be completely wrong (doesn't matter if using vector clocks that
+  increment per operation)
+* Clients are somewhat byzantine
+* A certain client is only allowed to modify certain parts of the state. e.g. consider
+  HN/Reddit/Quora style site. User may add their own user ID (but nobody else's) to a set
+  of upvotes/downvotes, user may add comments anywhere, user may only edit or remove their
+  own comments (and even that maybe with some limitations).
+* In serverless P2P (LAN game, distributed database) can perhaps implement validation logic
+  between every pair of peers?
+
+On change events
+Garbage collection
