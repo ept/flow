@@ -85,7 +85,7 @@ module Flow
       fields = (record['fields'] || []).map do |field|
         field_schema(field, record['namespace'], record['name'])
       end
-      fields.unshift(vector_clock_field)
+      fields.unshift(header_field)
 
       {
         'type' => 'record',
@@ -205,7 +205,7 @@ module Flow
         'name' => 'OrderedList',
         'namespace' => generated_namespace,
         'fields' => [
-          vector_clock_field,
+          header_field,
           {
             'name' => 'elements',
             'default' => [],
@@ -232,7 +232,7 @@ module Flow
               'type' => 'record',
               'fields' => [
                 {'name' => 'writer', 'type' => 'com.flowprotocol.crdt.PeerID'},
-                vector_clock_field('vectorClock'),
+                header_field('targetObject'),
                 {'name' => 'timestamp', 'type' => 'long'},
                 {
                   'name' => 'modifications',
@@ -287,12 +287,8 @@ module Flow
       raise 'TODO'
     end
 
-    def vector_clock_field(name='_flowVectorClock')
-      {
-        'name' => name,
-        'type' => {'type' => 'array', 'items' => 'com.flowprotocol.crdt.VectorClockEntry'},
-        'default' => []
-      }
+    def header_field(name='_flowHeader')
+      {'name' => name, 'type' => 'com.flowprotocol.crdt.DataStructureHeader'}
     end
 
     def version_field(name='version', options={})

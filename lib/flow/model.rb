@@ -251,6 +251,9 @@ module Flow
           ivar_name = :"@#{field.underscore_name}"
           instance_variable_set(ivar_name, record[field.name] || record[field.underscore_name])
         end
+        @_flow_header ||= {}
+        @_flow_header['objectID'] ||= OpenSSL::Random.random_bytes(16)
+        @_flow_header['vectorClock'] ||= []
       end
 
       def path_accessor(path)
@@ -335,7 +338,7 @@ module Flow
       end
 
       def local_operation
-        vector = (@_flow_vector_clock ||= [])
+        vector = @_flow_header['vectorClock']
         if this_peer = vector.detect {|entry| entry['peerID'] == Flow.peer_id }
           this_peer['count'] += 0
         else

@@ -1,24 +1,50 @@
 [
     {
-        "name": "com.flowprotocol.crdt.VectorClockEntry",
+        "name": "DataStructureHeader",
+        "namespace": "com.flowprotocol.crdt",
         "type": "record",
-        "doc": "One entry in a vector clock: the count of modifications made by a particular peer.",
+        "doc": "Metadata that is included once for each versioned data structure (record, list, set or map).",
         "fields": [
             {
-                "name": "peerID",
-                "doc": "Unique identifier of the peer that made the modifications.",
+                "name": "objectID",
+                "doc": "Persistent, unique identifier for this data structure. This identifier remains unchanged across all replicas of the data structure, and across any modifications.",
                 "type": {
                     "type": "fixed",
-                    "name": "PeerID",
-                    "doc": "64-bit probabilistically unique random identifier, used to identify a particular peer. A peer might be server, a client, an end-user device, a web browser, a thread, etc. — basically any two actors that can concurrently modify a replicated data structure should be different peers.",
-                    "size": 8
+                    "name": "UUID",
+                    "doc": "128-bit probabilistically unique random identifier, used to identify a particular object or data structure across all replicas and versions.",
+                    "size": 16
                 }
             },
             {
-                "name": "count",
-                "doc": "Number of modifications to this data structure made by this peer.",
-                "default": 0,
-                "type": "long"
+                "name": "vectorClock",
+                "doc": "The vector clock of the current version of this data structure (reflecting the latest modification that has been applied).",
+                "default": [],
+                "type": {
+                    "type": "array",
+                    "items": {
+                        "name": "VectorClockEntry",
+                        "type": "record",
+                        "doc": "One entry in a vector clock: the count of modifications made by a particular peer.",
+                        "fields": [
+                            {
+                                "name": "peerID",
+                                "doc": "Unique identifier of the peer that made the modifications.",
+                                "type": {
+                                    "type": "fixed",
+                                    "name": "PeerID",
+                                    "doc": "64-bit probabilistically unique random identifier, used to identify a particular peer. A peer might be server, a client, an end-user device, a web browser, a thread, etc. — basically any two actors that can concurrently modify a replicated data structure should be different peers.",
+                                    "size": 8
+                                }
+                            },
+                            {
+                                "name": "count",
+                                "doc": "Number of modifications to this data structure made by this peer.",
+                                "default": 0,
+                                "type": "long"
+                            }
+                        ]
+                    }
+                }
             }
         ]
     },

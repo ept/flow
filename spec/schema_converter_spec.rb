@@ -1,12 +1,8 @@
 require 'spec_helper'
 
 describe Flow::SchemaConverter do
-  def vector_clock_field(name='_flowVectorClock')
-    {
-      'name' => name,
-      'type' => {'type' => 'array', 'items' => 'com.flowprotocol.crdt.VectorClockEntry'},
-      'default' => []
-    }
+  def header_field(name='_flowHeader')
+    {'name' => name, 'type' => 'com.flowprotocol.crdt.DataStructureHeader'}
   end
 
   describe 'mapping primitive types' do
@@ -22,7 +18,7 @@ describe Flow::SchemaConverter do
       }).flow_schema.should == {
         'type' => 'record', 'name' => 'MyRecord', 'namespace' => '_flow_record',
         'fields' => [
-          vector_clock_field,
+          header_field,
           {'name' => 'myField', 'type' => 'com.flowprotocol.crdt.VersionedLong'}
         ]
       }
@@ -36,7 +32,7 @@ describe Flow::SchemaConverter do
       }).flow_schema.should == {
         'type' => 'record', 'name' => 'MyRecord', 'namespace' => '_flow_record',
         'fields' => [
-          vector_clock_field,
+          header_field,
           {'name' => 'myField', 'type' => 'com.flowprotocol.crdt.OptionalBytes', 'default' => {'value' => nil, 'version' => nil}}
         ]
       }
@@ -60,7 +56,7 @@ describe Flow::SchemaConverter do
           'type' => 'record', 'name' => 'NestedRecord', 'namespace' => '_flow_versioned', 'fields' => [
             {'name' => 'value', 'default' => nil, 'type' => ['null', {
               'type' => 'record', 'name' => 'NestedRecord', 'namespace' => '_flow_record', 'fields' => [
-                vector_clock_field,
+                header_field,
                 {'name' => 'nested', 'type' => 'com.flowprotocol.crdt.VersionedLong'}
               ]
             }]},
@@ -187,7 +183,7 @@ describe Flow::SchemaConverter do
       }).flow_schema.should == {
         'type' => 'record', 'name' => 'MyRecord', 'namespace' => '_flow_record',
         'fields' => [
-          vector_clock_field,
+          header_field,
           {'name' => 'answer', 'default' => nil, 'type' => ['null', {
             'type' => 'record', 'name' => 'answer', 'namespace' => '_flow_field.MyRecord', 'fields' => [
               {'name' => 'value', 'type' => 'long', 'default' => 42},
@@ -234,7 +230,7 @@ describe Flow::SchemaConverter do
         field['type'].first.should == 'null'
         field['type'].last.tap do |list_type|
           list_type.should include('name' => 'OrderedList', 'namespace' => '_flow_list.MyRecord.characters')
-          list_type['fields'].map{|field| field['name'] }.should == %w(_flowVectorClock elements queue)
+          list_type['fields'].map{|field| field['name'] }.should == %w(_flowHeader elements queue)
           list_type['fields'][1]['type']['items'].tap do |element|
             element.should include('type' => 'record', 'name' => 'ListElement', 'namespace' => '_flow_list.MyRecord.characters')
             element['fields'].map{|field| field['name'] }.should == %w(id valueVersion positionVersion timestamp deleted value)
@@ -242,7 +238,7 @@ describe Flow::SchemaConverter do
           end
           list_type['fields'][2]['type']['items'].tap do |operation|
             operation.should include('type' => 'record', 'name' => 'ListOperation', 'namespace' => '_flow_list.MyRecord.characters')
-            operation['fields'].map{|field| field['name'] }.should == %w(writer vectorClock timestamp modifications)
+            operation['fields'].map{|field| field['name'] }.should == %w(writer targetObject timestamp modifications)
             operation['fields'].last['type']['items'].tap do |modification|
               modification.map{|mod| mod['name'] }.should == %w(ListInsert ListUpdate ListDelete ListReorder)
               modification.each{|mod| mod['namespace'].should == '_flow_list.MyRecord.characters' }

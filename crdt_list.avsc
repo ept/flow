@@ -5,35 +5,9 @@
     "doc": "Encapsulates all the persistent state needed by an ordered list replicated data type. Based on the RGA (Replicated Growable Array) construction, as described in: Hyun-Gul Roh, Myeongjae Jeon, Jin-Soo Kim, and Joonwon Lee: “Replicated abstract data types: Building blocks for collaborative applications,” Journal of Parallel and Distributed Computing, vol. 71, no. 3, pp. 354–368, Mar. 2011.",
     "fields": [
         {
-            "name": "vectorClock",
-            "doc": "For each peer that has modified this list, contains the number of operations from that peer that we have applied to this structure.",
-            "default": [],
-            "type": {
-                "type": "array",
-                "items": {
-                    "name": "VectorClockEntry",
-                    "type": "record",
-                    "doc": "One entry in a vector clock: the count of modifications made by a particular peer.",
-                    "fields": [
-                        {
-                            "name": "peerID",
-                            "doc": "Unique identifier of the peer that made the modifications.",
-                            "type": {
-                                "type": "fixed",
-                                "name": "PeerID",
-                                "doc": "64-bit probabilistically unique random identifier, used to identify a particular peer. A peer might be server, a client, an end-user device, a web browser, a thread, etc. — basically any two actors that can concurrently modify a replicated data structure should be different peers.",
-                                "size": 8
-                            }
-                        },
-                        {
-                            "name": "count",
-                            "doc": "Number of modifications to this data structure made by this peer.",
-                            "default": 0,
-                            "type": "long"
-                        }
-                    ]
-                }
-            }
+            "name": "header",
+            "doc": "Metadata about the list version as reflected in `elements` (not including items in the `queue`).",
+            "type": "DataStructureHeader"
         },
         {
             "name": "elements",
@@ -49,23 +23,7 @@
                         {
                             "name": "id",
                             "doc": "Immutable identifier for this list element that was assigned when the element was inserted. It is unique within this list, but not globally unique. In fact, it is simply the version number of the operation that inserted it. Subsequent operations that need to refer to a list element use this identifier.",
-                            "type": {
-                                "name": "VectorClockVersion",
-                                "type": "record",
-                                "doc": "A per-datastructure-unique, totally ordered version identifier that is derived from a vector clock. Based on the S4Vector of Roh et al., but simplified.",
-                                "fields": [
-                                    {
-                                        "name": "vectorClockSum",
-                                        "doc": "The sum of all the entries' counts in the vector clock from which this record is derived.",
-                                        "type": "long"
-                                    },
-                                    {
-                                        "name": "lastWriterID",
-                                        "doc": "Unique identifier of the peer that most recently modified the data structure.",
-                                        "type": "PeerID"
-                                    }
-                                ]
-                            }
+                            "type": "VectorClockVersion"
                         },
                         {
                             "name": "valueVersion",
@@ -114,13 +72,9 @@
                             "type": "PeerID"
                         },
                         {
-                            "name": "vectorClock",
-                            "doc": "The vector clock of the data structure at the peer that modified it, immediately after the modifications have been locally applied. If multiple modifications have been grouped together into one operation, the vector clock must be incremented for each modification.",
-                            "default": [],
-                            "type": {
-                                "type": "array",
-                                "items": "VectorClockEntry"
-                            }
+                            "name": "targetObject",
+                            "doc": "Metadata about the modified data structure, immediately after the modifications have been applied on the peer that generated them. If multiple modifications have been grouped together into one operation, the vector clock must be incremented for each modification.",
+                            "type": "DataStructureHeader"
                         },
                         {
                             "name": "timestamp",
@@ -180,14 +134,19 @@
                                         ]
                                     },
                                     {
-                                        "name": "ListReorder",
+                                        "name": "ListRelocate",
                                         "type": "record",
-                                        "doc": "Records the fact that a peer modified an ordered list by reordering some of its elements.",
+                                        "doc": "Records the fact that a peer modified an ordered list by taking an existing object (from this list or another data structure) and moving it into this list. When the former parent data structure is the same list, this operation reorders list elements. When the former parent is some other data structure (not necessarily a list), the element is removed from that other structure at the same time as it is added to this list.",
                                         "fields": [
                                             {
-                                                "name": "elementID",
-                                                "doc": "The `id` of the list element whose position was changed.",
-                                                "type": "VectorClockVersion"
+                                                "name": "objectID",
+                                                "doc": "The globally unique ID of the object that was moved into this list.",
+                                                "type": "UUID"
+                                            },
+                                            {
+                                                "name": "formerParent",
+                                                "doc": "Metadata about the data structure that previously contained the relocated object, or null if the former parent is the current list (i.e. the elements within the list are being reordered). The vector clock is taken immediately after the relocated object has been removed from the former parent. The former parent's vector clock is also incremented.",
+                                                "type": ["null", "DataStructureHeader"]
                                             },
                                             {
                                                 "name": "precedingElement",
