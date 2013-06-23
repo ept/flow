@@ -89,10 +89,14 @@ Schema changes:
 Transfer protocol:
 
 * Include a vector clock so that we can preserve causal order (any operations that are not yet
-  causally ready are put in a queue, cf. Roh et al. §2.1). This can also be used for figuring
-  out from what point we need to replay operations after being disconnected. One vector clock
-  for the entire system state should be sufficient? Or better to use a separate vector clock
-  per data structure (so that the numbers are kept small)?
+  causally ready are put in a queue, cf. Roh et al. §2.1). Each data structure needs its own
+  vector clock (or at least, each ordered list needs one). Modifying an object inside a nested
+  structure should not affect its ancestors' vector clocks (see section on relocation).
+* A vector clock can also be used for figuring out from what point we need to replay operations
+  after being disconnected. For this, it's convenient to use one vector clock for the entire system
+  state. This is not the same as the vector clock for the root object (which only changes when the
+  root object itself is modified), but rather is incremented on any modification anywhere in the
+  object tree.
 * Things are simpler if we can assume a central server that serializes writes. This removes
   some causality edge-cases, and more importantly, solves a liveness problem. Say A performs
   an operation, B gets the message, but C doesn't. B performs further operations on top of A's
@@ -106,9 +110,24 @@ Transfer protocol:
 * Exchange Avro schemas on connection setup, then include a hash of the schema in every message.
   Note the value of a message may be any record type in the schema; support hashing each named
   type in a schema, and using that to identify the record type being sent.
-* Need some way of describing the path taken to the field being modified. For record fields and
-  enums, use their position in the schema as numerical encoding. For sorted lists, use s4vector.
-  For sets, use unique-tag.
+* Need some way of identifying the object and field being modified. Use a globally unique
+  identifier for the object (see section on relocation).
+
+Relocation:
+
+* Especially useful in applications that use a tree structure (recursive Avro schemas). Wanting to
+  move a subtree to another place in the tree is quite natural. Reordering elements in a list is
+  a special case of the same operation.
+* If relocation is supported, then how do we identify the object that is being modified (possibly
+  deep within a nested structure)? We could note the path from the root to that object, but due
+  to relocation that path may be outdated by the time the modification is applied. One option
+  would be to keep a "moved-to" locator on each tombstone created by relocation. A simpler option
+  is probably to give each object a globally unique ID, and let each peer maintain a mapping from
+  object ID to its current location in the object tree.
+* When objects can be relocated, it doesn't make sense for modification of an object inside a
+  deeply nested structure to trigger increment of the vector clocks of the object's parents (since
+  different peers may apply modifications in a different order, and then end up with different
+  values for some vector clocks).
 
 Use on the web:
 
