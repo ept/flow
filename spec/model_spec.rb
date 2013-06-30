@@ -90,36 +90,51 @@ describe Flow::Model do
   end
 
   describe 'mapping fields to methods' do
-    describe 'for a versioned primitive field' do
+    describe 'for versioned primitive fields' do
       before do
         stub_const 'MyRecord', Flow::Model.new({
           'type' => 'record', 'name' => 'MyRecord', 'fields' => [
-            {'name' => 'exampleField', 'type' => 'string'}
+            {'name' => 'exampleField', 'type' => 'string'},
+            {'name' => 'example2', 'type' => 'long'}
           ]
         })
       end
 
-      it 'should allow safe modification of data' do
+      it 'should generate accessor methods' do
         record = MyRecord.new
         record.should be_respond_to(:example_field)
         record.should be_respond_to(:example_field=)
+        record.should be_respond_to(:example2)
+        record.should be_respond_to(:example2=)
+      end
 
+      it 'should allow safe modification of data' do
+        record = MyRecord.new
         updated_record = Flow.transaction(record) do
           record.example_field.should be_nil
+          record.example2.should be_nil
+
           record.example_field = 'hello'
+          record.example2 = 123
+
           record.example_field.should == 'hello'
+          record.example2.should == 123
         end
 
         record.example_field.should be_nil
+        record.example2.should be_nil
         updated_record.example_field.should == 'hello'
+        updated_record.example2.should == 123
       end
 
       it 'should serialize and parse data' do
         record = Flow.transaction(MyRecord.new) do |record|
           record.example_field = 'hello'
+          record.example2 = 123
         end
         parsed = MyRecord.parse(record.serialize, MyRecord::FLOW_SCHEMA)
         parsed.example_field.should == 'hello'
+        parsed.example2.should == 123
       end
     end
 
