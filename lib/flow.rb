@@ -1,3 +1,4 @@
+require 'set'
 require 'avro'
 require 'openssl'
 require 'flow/schema_converter'

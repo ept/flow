@@ -144,93 +144,63 @@ module Flow
         app_schema.model_class = klass
         flow_schema.model_class = klass
 
-        accessor_class = Class.new(klass) do |accessor_class|
-          include Accessor
-          define_method(:model_class) { klass }
-        end
-
         klass.const_set :APP_SCHEMA, app_schema
         klass.const_set :FLOW_SCHEMA, flow_schema
         klass.const_set :DatumReader, make_datum_reader(klass)
-        klass.const_set :PathAccessor, accessor_class
         class << klass
           define_method(:app_schema) { const_get(:APP_SCHEMA) }
           define_method(:flow_schema) { const_get(:FLOW_SCHEMA) }
           define_method(:datum_reader_class) { const_get(:DatumReader) }
-          define_method(:path_accessor_class) { const_get(:PathAccessor) }
         end
 
         app_schema.fields.each do |app_field|
           flow_field = flow_schema.fields.detect{|field| field.name == app_field.name }
           raise "Field #{app_schema.fullname}.#{app_field.name} does not appear in flow schema" unless flow_field
-          create_accessors(klass, accessor_class, app_field, flow_field)
+          create_accessors(klass, app_field, flow_field)
         end
       end
 
       # Create friendly accessor methods for Avro record fields
-      def create_accessors(model_class, accessor_class, app_field, flow_field)
+      def create_accessors(model_class, app_field, flow_field)
         unless flow_schema.is_a? Avro::Schema::RecordSchema
-          create_unversioned_accessors(model_class, accessor_class, app_field, flow_field)
+          create_unversioned_accessors(model_class, app_field, flow_field)
           return
         end
 
         namespace = (flow_field.type.namespace || '').split('.')
 
         if namespace.include?('_flow_versioned') || flow_field.type.fullname =~ /\Acom\.flowprotocol\.crdt\.(Versioned|Optional)/
-          create_versioned_accessors(model_class, accessor_class, app_field, flow_field)
+          create_versioned_accessors(model_class, app_field, flow_field)
         else
-          create_unversioned_accessors(model_class, accessor_class, app_field, flow_field)
+          create_unversioned_accessors(model_class, app_field, flow_field)
         end
       end
 
-      def create_unversioned_accessors(model_class, accessor_class, app_field, flow_field)
+      def create_unversioned_accessors(model_class, app_field, flow_field)
         model_class.class_eval do
-          attr_reader app_field.underscore_name
+          define_method(app_field.underscore_name) { record[app_field.name] }
           define_method(:"#{app_field.underscore_name}=") {|value| raise NotImplementedError }
         end
       end
 
-      def create_versioned_accessors(model_class, accessor_class, app_field, flow_field)
+      def create_versioned_accessors(model_class, app_field, flow_field)
         model_class.class_eval do
           define_method(app_field.underscore_name) do
+            versioned = record[app_field.name]
             if Flow::Transaction.current
-              make_root_accessor.send(app_field.underscore_name)
-            else
-              versioned = instance_variable_get(:"@#{app_field.underscore_name}")
-              versioned && versioned['value']
+              versioned = Flow::Transaction.current.updated(self).record[app_field.name]
             end
+            versioned && versioned['value']
           end
 
-          setter_name = :"#{app_field.underscore_name}="
-          define_method(setter_name) do |value|
-            make_root_accessor.send(setter_name, value)
-          end
-        end
-
-        accessor_class.class_eval do
-          define_method(app_field.underscore_name) do
-            unless flow_transaction.equal?(Flow::Transaction.current)
-              raise 'Accessors cannot be used outside of their transaction'
-            end
-            versioned = instance_variable_get(:"@#{app_field.underscore_name}")
-            value = versioned && versioned['value']
-            if value.is_a? Flow::Model::Base
-              value.path_accessor(flow_accessor_path + [app_field.underscore_name])
+          define_method(:"#{app_field.underscore_name}=") do |value|
+            if Flow::Transaction.current
+              updated = update_field(app_field.name) do |version|
+                {'value' => value, 'version' => version}
+              end
+              Flow::Transaction.current.set_latest_model(self, updated)
             else
-              value
-            end
-          end
-
-          setter_name = :"#{app_field.underscore_name}="
-          define_method(setter_name) do |value|
-            if flow_transaction.equal?(Flow::Transaction.current)
-              versioned = {'value' => value, 'version' => local_operation}
-              instance_variable_set(:"@#{app_field.underscore_name}", versioned)
-              # TODO register this accessor object as the updated version of the model for this transaction.
-              # (Only need to copy an object once per transaction, even when updating multiple fields.)
-              # Then propagate up the accessor path.
-            else
-              raise 'Accessors cannot be used outside of their transaction'
+              raise 'Modifications are only allowed in a transaction. Please wrap your code in Flow.transaction { ... }'
             end
           end
         end
@@ -247,35 +217,33 @@ module Flow
     class Base
       # record is a hash of field name => value
       def initialize(record={})
-        self.class.flow_schema.fields.each do |field|
-          ivar_name = :"@#{field.underscore_name}"
-          instance_variable_set(ivar_name, record[field.name] || record[field.underscore_name])
+        unless record['_flowHeader']
+          record = record.merge('_flowHeader' => {'objectID' => OpenSSL::Random.random_bytes(16), 'vectorClock' => []})
         end
-        @_flow_header ||= {}
-        @_flow_header['objectID'] ||= OpenSSL::Random.random_bytes(16)
-        @_flow_header['vectorClock'] ||= []
-      end
-
-      def path_accessor(path)
-        trans = Flow::Transaction.current
-        if trans
-          accessor = trans.get_accessor(self)
-          if accessor.nil?
-            accessor = self.class.path_accessor_class.new(self, trans, path + [self])
-            trans.add_accessor(self, accessor)
-          end
-          accessor
-        else
-          raise 'Modifications are only allowed in a transaction. Please wrap your code in Flow.transaction { ... }'
-        end
+        @record = record
       end
 
       def to_avro
         self.class.flow_schema.fields.each_with_object({}) do |field, hash|
-          value = instance_variable_get(:"@#{field.underscore_name}")
-          hash[field.name] = value_to_avro(value)
+          hash[field.name] = value_to_avro(@record[field.name])
         end
       end
+
+      def flow_object_id
+        record['_flowHeader']['objectID']
+      end
+
+      def flow_transaction_update(transaction)
+        record = self.class.flow_schema.fields.each_with_object({}) do |field, hash|
+          hash[field.name] = updated_value(transaction, @record[field.name])
+        end
+        self.class.new(record).tap do |updated|
+          transaction.set_latest_model(self, updated)
+        end
+      end
+
+      attr_reader :record
+      protected :record
 
       private
 
@@ -289,66 +257,70 @@ module Flow
         end
       end
 
-      def make_root_accessor(*args)
-        raise 'Please start from the root when accessing models inside a transaction'
-      end
-    end
-
-    # Each model class has an accessor subclass that is used for making modifications. This module
-    # is included into each such accessor class.
-    module Accessor
-      attr_reader :flow_original_model, :flow_transaction, :flow_accessor_path
-
-      def initialize(model, transaction, accessor_path)
-        self.class.flow_schema.fields.each do |field|
-          ivar_name = :"@#{field.underscore_name}"
-          instance_variable_set(ivar_name, model.instance_variable_get(ivar_name))
-        end
-        @flow_original_model = model
-        @flow_transaction = transaction
-        @flow_accessor_path = accessor_path
-      end
-
-      def path_accessor(path)
-        # TODO check whether we previously reached this accessor through a different path.
-        # We want our object graph to be a tree, not a DAG.
-        self
-      end
-
-      def updated_model
-        fields = self.class.flow_schema.fields.each_with_object({}) do |field, hash|
-          value = instance_variable_get(:"@#{field.underscore_name}")
-          hash[field.name] = updated_field(value)
-        end
-        model_class.new(fields)
-      end
-
-      private
-
-      def updated_field(value)
-        if value.is_a? Flow::Model::Base
-          accessor = flow_transaction.get_accessor(value)
-          return accessor.updated_model if accessor
-          value.respond_to?(:updated_model) ? value.updated_model : value
-        elsif value.is_a?(Hash) && value['version'] # TODO handle Avro maps that have 'version' as a key
-          value.merge('value' => updated_field(value['value']))
+      # TODO this is similar to value_to_avro -- find a way of sharing the logic
+      def updated_value(transaction, value)
+        if value.respond_to? :flow_object_id
+          transaction.updated_root(value)
+        elsif value.is_a?(Hash) && value['version']
+          value.merge('value' => updated_value(transaction, value['value']))
         else
           value
         end
       end
 
-      def local_operation
-        vector = @_flow_header['vectorClock']
-        if this_peer = vector.detect {|entry| entry['peerID'] == Flow.peer_id }
-          this_peer['count'] += 0
-        else
-          vector << {'peerID' => Flow.peer_id, 'count' => 1}
-        end
-
-        {
+      # Makes a copy of the latest version of this model, with the given field name set to the
+      # return value of the block. The block is called with one parameter: the vector clock version
+      # of this change.
+      def update_field(field_name, &block)
+        latest = Transaction.current.updated(self).record
+        vector = increment_vector_clock(latest['_flowHeader']['vectorClock'])
+        header = latest['_flowHeader'].merge('vectorClock' => vector)
+        version = {
           'lastWriterID' => Flow.peer_id,
           'vectorClockSum' => vector.inject(0) {|sum, entry| sum + entry['count'] }
         }
+        new_value = yield version
+        self.class.new(latest.merge('_flowHeader' => header, field_name => new_value))
+      end
+
+      # Given a vector clock array, returns a new array with this peer's count incremented.
+      def increment_vector_clock(vector)
+        this_peer = vector.detect {|entry| entry['peerID'] == Flow.peer_id }
+        if this_peer.nil?
+          this_peer = {'peerID' => Flow.peer_id, 'count' => 0}
+          vector += [this_peer]
+        end
+
+        vector.map do |entry|
+          if entry['peerID'] == Flow.peer_id
+            entry.merge('count' => this_peer['count'] + 1)
+          else
+            entry
+          end
+        end
+      end
+
+      def update_index(index, parent=nil)
+        item = index[flow_object_id]
+        if item && item.model.equal?(self) && item.parent.equal?(parent)
+          index
+        else
+          index = index.set(flow_object_id, IndexItem.new(self, parent))
+          self.class.app_schema.fields.inject(index) do |index, field|
+            update_value_in_index(index, @record[field.name])
+          end
+        end
+      end
+
+      # TODO this is similar to value_to_avro -- find a way of sharing the logic
+      def update_value_in_index(index, value)
+        if value.respond_to? :update_index
+          value.update_index(index, self)
+        elsif value.is_a?(Hash) && value['version']
+          update_value_in_index(index, value['value'])
+        else
+          index
+        end
       end
     end
 
@@ -381,17 +353,29 @@ module Flow
         end
       end
 
+      attr_reader :flow_index
+
+      def initialize(record={}, existing_index=nil)
+        super(record)
+        @flow_index = update_index(existing_index || Flow::TwoThreeTree::Map.new)
+      end
+
       def serialize(encoder=nil)
         use_encoder = encoder || Avro::IO::BinaryEncoder.new(StringIO.new)
         Avro::IO::DatumWriter.new(self.class.flow_schema).write(to_avro, use_encoder)
         use_encoder.writer.string unless encoder
       end
 
-      private
-
-      def make_root_accessor
-        path_accessor([])
+      def flow_transaction_update(transaction)
+        record = self.class.flow_schema.fields.each_with_object({}) do |field, hash|
+          hash[field.name] = updated_value(transaction, @record[field.name])
+        end
+        self.class.new(record, flow_index).tap do |updated|
+          transaction.set_latest_model(self, updated)
+        end
       end
     end
   end
+
+  IndexItem = Struct.new(:model, :parent)
 end

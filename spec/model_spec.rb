@@ -69,61 +69,23 @@ describe Flow::Model do
       })
     end
 
-    it 'should not allow mutation outside of a transaction' do
+    it 'should not allow modification outside of a transaction' do
       expect {
         MyRecord.new.nested = MyRecord::Nested.new
       }.to raise_error(/Modifications are only allowed in a transaction/)
     end
 
     it 'should not allow nested transactions' do
+      record = MyRecord.new
       expect {
-        Flow.transaction { Flow.transaction { } }
+        Flow.transaction(record) { Flow.transaction(record) { } }
       }.to raise_error(/already in a transaction/)
     end
 
-    it 'should require traversing from the root in a transaction' do
-      first = MyRecord.new
-      second = Flow.transaction do
-        first.nested = MyRecord::Nested.new
-      end.updated(first)
-      nested = second.nested
+    it 'should only allow root objects to determine the transaction scope' do
       expect {
-        Flow.transaction { nested.example_field = 'foo' }
-      }.to raise_error(/Please start from the root when accessing models inside a transaction/)
-    end
-
-    describe 'of accessor objects' do
-      before do
-        Flow.transaction do
-          record = MyRecord.new
-          record.nested = MyRecord::Nested.new
-          @nested = record.nested
-        end
-      end
-
-      it 'should not allow getters outside transactions' do
-        expect {
-          @nested.example_field
-        }.to raise_error(/Accessors cannot be used outside of their transaction/)
-      end
-
-      it 'should not allow getters in another transaction' do
-        expect {
-          Flow.transaction { @nested.example_field }
-        }.to raise_error(/Accessors cannot be used outside of their transaction/)
-      end
-
-      it 'should not allow setters outside transactions' do
-        expect {
-          @nested.example_field = 'foo'
-        }.to raise_error(/Accessors cannot be used outside of their transaction/)
-      end
-
-      it 'should not allow setters in another transaction' do
-        expect {
-          Flow.transaction { @nested.example_field = 'foo' }
-        }.to raise_error(/Accessors cannot be used outside of their transaction/)
-      end
+        Flow.transaction(MyRecord::Nested.new) { }
+      }.to raise_error(/Expected root model/)
     end
   end
 
@@ -142,21 +104,20 @@ describe Flow::Model do
         record.should be_respond_to(:example_field)
         record.should be_respond_to(:example_field=)
 
-        updated_record = Flow.transaction do
+        updated_record = Flow.transaction(record) do
           record.example_field.should be_nil
           record.example_field = 'hello'
           record.example_field.should == 'hello'
-        end.updated(record)
+        end
 
         record.example_field.should be_nil
         updated_record.example_field.should == 'hello'
       end
 
       it 'should serialize and parse data' do
-        record = Flow.transaction do
-          record = MyRecord.new
+        record = Flow.transaction(MyRecord.new) do |record|
           record.example_field = 'hello'
-        end.updated(record)
+        end
         parsed = MyRecord.parse(record.serialize, MyRecord::FLOW_SCHEMA)
         parsed.example_field.should == 'hello'
       end
@@ -179,13 +140,13 @@ describe Flow::Model do
         record = MyRecord.new
         nested = MyRecord::Nested.new
 
-        updated = Flow.transaction do
+        updated = Flow.transaction(record) do
           record.nested.should be_nil
           record.nested = nested
           record.nested.example_field.should be_nil
           record.nested.example_field = 'hello'
           record.nested.example_field.should == 'hello'
-        end.updated(record)
+        end
 
         record.nested.should be_nil
         nested.example_field.should be_nil
@@ -194,45 +155,61 @@ describe Flow::Model do
 
       it 'should allow safe modification of outer fields' do
         first = MyRecord.new
-        second = Flow.transaction do
+        second = Flow.transaction(first) do
           first.nested = MyRecord::Nested.new
           first.nested.example_field = 'hello'
-        end.updated(first)
+        end
 
         third = MyRecord.new
-        fourth = Flow.transaction do
+        fourth = Flow.transaction(third) do
           third.nested.should be_nil
           third.nested = second.nested
           third.nested.example_field.should == 'hello'
-        end.updated(third)
+        end
 
+        first.nested.should be_nil
         third.nested.should be_nil
+        second.nested.example_field.should == 'hello'
         fourth.nested.example_field.should == 'hello'
       end
 
       it 'should allow safe modification of nested fields' do
-        first = MyRecord.new
-        second = Flow.transaction do
+        first = Flow.transaction(MyRecord.new) do |first|
           first.nested = MyRecord::Nested.new
           first.nested.example_field = 'hello'
-        end.updated(first)
+        end
 
-        third = Flow.transaction do
-          second.nested.example_field.should == 'hello'
-          second.nested.example_field = 'world'
-          second.nested.example_field.should == 'world'
-        end.updated(second)
+        second = Flow.transaction(first) do
+          first.nested.example_field.should == 'hello'
+          first.nested.example_field = 'world'
+          first.nested.example_field.should == 'world'
+        end
 
-        second.nested.example_field.should == 'hello'
-        third.nested.example_field.should == 'world'
+        first.nested.example_field.should == 'hello'
+        second.nested.example_field.should == 'world'
+      end
+
+      it 'should allow shortcut access to nested fields in transactions' do
+        first = Flow.transaction(MyRecord.new) do |first|
+          first.nested = MyRecord::Nested.new.tap {|n| n.example_field = 'hello' }
+        end
+
+        nested = first.nested
+        second = Flow.transaction(first) do
+          nested.example_field = 'world'
+          nested.example_field.should == 'world'
+          first.nested.example_field.should == 'world'
+        end
+
+        first.nested.example_field.should == 'hello'
+        second.nested.example_field.should == 'world'
       end
 
       it 'should serialize and parse data' do
-        record = Flow.transaction do
-          record = MyRecord.new
+        record = Flow.transaction(MyRecord.new) do |record|
           record.nested = MyRecord::Nested.new
           record.nested.example_field = 'hello'
-        end.updated(record)
+        end
 
         parsed = MyRecord.parse(record.serialize, MyRecord::FLOW_SCHEMA)
         parsed.nested.example_field.should == 'hello'
