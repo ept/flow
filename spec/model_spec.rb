@@ -206,7 +206,8 @@ describe Flow::Model do
 
       it 'should allow shortcut access to nested fields in transactions' do
         first = Flow.transaction(MyRecord.new) do |first|
-          first.nested = MyRecord::Nested.new.tap {|n| n.example_field = 'hello' }
+          first.nested = MyRecord::Nested.new
+          first.nested.example_field = 'hello'
         end
 
         nested = first.nested

@@ -31,24 +31,40 @@ module Flow
       Thread.current[:flow_transaction] = nil
     end
 
-    def set_latest_model(existing, updated)
-      unless @model_updates.include? existing.flow_object_id
-        index_item = index_lookup(existing.flow_object_id)
-        while index_item && index_item.parent
-          @dirty_ancestors << index_item.parent.flow_object_id
-          index_item = index_lookup(index_item.parent.flow_object_id)
-        end
+    def set_latest_model(updated)
+      index_item = index_lookup(updated.flow_object_id)
+      raise 'Cannot modify an object that is not part of the transaction object tree' if index_item.nil?
+
+      ancestor = index_item
+      while ancestor.parent
+        @dirty_ancestors << ancestor.parent.flow_object_id
+        ancestor = index_lookup(ancestor.parent.flow_object_id)
+        raise 'Cannot modify a tree that is not part of the transaction object tree' if ancestor.nil?
       end
 
-      @model_updates[existing.flow_object_id] = updated
+      unless @roots.any? {|root| root.flow_object_id == ancestor.model.flow_object_id }
+        raise 'Modified object is not in the current transaction scope'
+      end
+
+      @model_updates[updated.flow_object_id] = IndexItem.new(updated, index_item.parent)
+    end
+
+    def set_latest_parent(child, parent)
+      # Mark old ancestor chain as dirty, if applicable.
+      # TODO make sure the child is removed from its old parent.
+      set_latest_model(child) if index_lookup(child.flow_object_id)
+
+      @model_updates[child.flow_object_id] = IndexItem.new(child, parent)
+      set_latest_model(child) # Mark new ancestor chain as dirty
     end
 
     def updated(model)
-      @model_updates[model.flow_object_id] || model
+      index_item = @model_updates[model.flow_object_id]
+      index_item ? index_item.model : model
     end
 
     def updated_root(model)
-      if @dirty_ancestors.include?(model.flow_object_id) || index_lookup(model.flow_object_id)
+      if @dirty_ancestors.include?(model.flow_object_id)
         updated(model).flow_transaction_update(self)
       else
         updated(model)
@@ -58,6 +74,7 @@ module Flow
     private
 
     def index_lookup(object_id)
+      return @model_updates[object_id] if @model_updates.include?(object_id)
       @roots.each do |root|
         item = root.flow_index[object_id]
         return item if item

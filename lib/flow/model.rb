@@ -198,7 +198,10 @@ module Flow
               updated = update_field(app_field.name) do |version|
                 {'value' => value, 'version' => version}
               end
-              Flow::Transaction.current.set_latest_model(self, updated)
+              Flow::Transaction.current.set_latest_model(updated)
+              if value.respond_to? :flow_object_id
+                Flow::Transaction.current.set_latest_parent(value, updated)
+              end
             else
               raise 'Modifications are only allowed in a transaction. Please wrap your code in Flow.transaction { ... }'
             end
@@ -238,7 +241,7 @@ module Flow
           hash[field.name] = updated_value(transaction, @record[field.name])
         end
         self.class.new(record).tap do |updated|
-          transaction.set_latest_model(self, updated)
+          transaction.set_latest_model(updated)
         end
       end
 
@@ -311,6 +314,7 @@ module Flow
           end
         end
       end
+      protected :update_index
 
       # TODO this is similar to value_to_avro -- find a way of sharing the logic
       def update_value_in_index(index, value)
@@ -371,7 +375,7 @@ module Flow
           hash[field.name] = updated_value(transaction, @record[field.name])
         end
         self.class.new(record, flow_index).tap do |updated|
-          transaction.set_latest_model(self, updated)
+          transaction.set_latest_model(updated)
         end
       end
     end
